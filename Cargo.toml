@@ -1,0 +1,25 @@
+[package]
+name = "wasm-wgpu"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+#egui = "0.30.0" #Immediate mode GUI library
+winit = "0.30.9"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster = "0.4.0"
+wgpu = "24.0.1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.7"
+#wasm-bindgen = "0.2.100"
+#js-sys = "0.3.77" #In the future, standard js functionality may(?) be useful? Probably not, this will be accessed through cross-platform libraries such as wgpu and winit
+wasm-rs-async-executor = "0.9.0"
+wgpu = { version = "24.0.1", features = ["webgl", "webgpu"] }
+
+# [features]
+# webgl-backend
+# webgpu-backend
+# desktop
