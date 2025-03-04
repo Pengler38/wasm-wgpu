@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use pollster;
 
 use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::{ActiveEventLoop, ControlFlow, EventLoop}, window::{Window, WindowId}
@@ -150,7 +151,7 @@ impl ApplicationHandler for App {
         );
 
 
-        let state = platform_specific::executor::block_on(State::new(window.clone()));
+        let state = pollster::block_on(State::new(window.clone()));
         self.state = Some(state);
 
         window.request_redraw();

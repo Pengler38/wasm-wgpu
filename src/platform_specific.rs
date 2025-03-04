@@ -1,8 +1,3 @@
-#[cfg(target_arch = "wasm32")]
-pub use wasm_rs_async_executor::single_threaded as executor;
-#[cfg(not(target_arch = "wasm32"))]
-pub use pollster as executor;
-
 #[allow(dead_code)]
 pub fn print(string: &str) {
     #[cfg(target_arch = "wasm32")]
