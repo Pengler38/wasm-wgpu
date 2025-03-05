@@ -14,6 +14,7 @@ struct State {
     size: winit::dpi::PhysicalSize<u32>,
     surface: wgpu::Surface<'static>,
     surface_format: wgpu::TextureFormat,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl State {
@@ -43,7 +44,65 @@ impl State {
                                         //if you configure the surface with a size of zero
 
         let cap = surface.get_capabilities(&adapter);
-        let surface_format = cap.formats[0];
+        let surface_format = cap.formats.iter()
+            .find(|f| f.is_srgb())
+            .copied()
+            .unwrap_or(cap.formats[0]);
+
+
+        //Create the Render Pipeline
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/shader.wgsl").into()),
+        });
+
+        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Render pipeline layout"),
+            bind_group_layouts: &[],
+            push_constant_ranges: &[],
+        });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                // Setting this to anything other than Fill requires
+                // Features::NON_FILL_POLYGON_MODE
+                polygon_mode: wgpu::PolygonMode::Fill,
+                // Requres Features::DEPTH_CLIP_CONTROL
+                unclipped_depth: false,
+                // Requres Features::CONSERVATIVE_RASTERIZATION
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
 
         let state = State {
             window,
@@ -52,6 +111,7 @@ impl State {
             size,
             surface,
             surface_format,
+            render_pipeline,
         };
 
         //Configure surface for the first time
@@ -92,11 +152,11 @@ impl State {
 
     fn render(&mut self) {
         //Create texture view
-        let surface_texture = self
+        let output = self
             .surface
             .get_current_texture()
             .expect("Failed to acquire next swapchain texture");
-        let texture_view = surface_texture
+        let output_texture_view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor {
                 //Without add_srgb_suffix the image we will be working with might not be "gamma
@@ -108,13 +168,13 @@ impl State {
         //Renders a green screen
         let mut encoder = self.device.create_command_encoder(&Default::default());
         //Create the render pass which will clear the screen
-        let renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        let mut renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &texture_view,
+                view: &output_texture_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -123,15 +183,17 @@ impl State {
             occlusion_query_set: None,
         });
 
-        //call draw commands if I wanted to?
+        // Draw commands
+        renderpass.set_pipeline(&self.render_pipeline);
+        renderpass.draw(0..3, 0..1);
 
-        //End the render pass
+        //End the render pass, releasing the borrow of encoder
         drop(renderpass);
 
         //Submit the command in the queue to execute
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
-        surface_texture.present();
+        output.present();
     }
 }
 
