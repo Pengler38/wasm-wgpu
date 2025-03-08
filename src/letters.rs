@@ -34,6 +34,30 @@ impl Model {
         }
     }
 
+    // Supply the verts in counter-clockwise order so the tri points the right way
+    fn tri_2d(vs: [(f32, f32); 3]) -> Self {
+        Self::new_2d(&vs, &[[0, 1, 2]])
+    }
+
+    fn append_tri_2d(self, vs: [(f32, f32); 3]) -> Self {
+        self.append(Self::tri_2d(vs))
+    }
+
+    // Supply the verts in counter-clockwise order so the tris point the right way
+    fn rect_2d(vs: [(f32, f32); 4]) -> Self {
+        Self::new_2d(
+            &vs,
+            &[
+                [0, 1, 3],
+                [1, 2, 3],
+            ],
+        )
+    }
+
+    fn append_rect_2d(self, vs: [(f32, f32); 4]) -> Self {
+        self.append(Self::rect_2d(vs))
+    }
+
     // Appends self with f applied to a copy of self
     fn append_apply(self, f: fn(Model) -> Model) -> Self{
         let clone = self.clone();
@@ -94,61 +118,51 @@ fn mirror_x(m: Model) -> Model {
 //}
 
 pub fn create_alphabet_models() -> Vec<Model> {
-    let a = Model::new_2d(
-        &[
+    let a = Model::rect_2d(
+        [
             (0.25, 0.1),
             (0.4, 0.1),
             (0.1, 0.9),
             (0.0, 0.8),
         ],
-        &[
-            [0, 1, 2],
-            [0, 2, 3],
+    ).append_apply(mirror_x).append_rect_2d(
+        [
+            (0.25, 0.35),
+            (0.2, 0.5),
+            (-0.2, 0.5),
+            (-0.25, 0.35),
         ],
-    ).append_apply(mirror_x).append(
-        Model::new_2d(
-            &[
-                (0.0, 0.8),
-                (0.1, 0.9),
-                (-0.1, 0.9),
-                (0.2, 0.5),
-                (0.25, 0.35),
-                (-0.2, 0.5),
-                (-0.25, 0.35),
-            ],
-            &[
-                [0, 1, 2],
-                [3, 5, 4],
-                [4, 5, 6],
-            ],
-        )
+    ).append_tri_2d(
+        [
+            (0.0, 0.8),
+            (0.1, 0.9),
+            (-0.1, 0.9),
+        ],
     );
-    //let b = vec![];
-    //let c = vec![];
-    //let d = vec![];
-    //let e = vec![];
-    //let f = vec![];
-    //let g = vec![];
-    //let h = vec![];
-    //let i = vec![];
-    //let j = vec![];
-    //let k = vec![];
-    //let l = vec![];
-    //let m = vec![];
-    //let n = vec![];
-    //let o = vec![];
-    //let p = vec![];
-    //let q = vec![];
-    //let r = vec![];
-    //let s = vec![];
-    //let t = vec![];
-    //let u = vec![];
-    //let v = vec![];
-    //let w = vec![];
-    //let x = vec![];
-    //let y = vec![];
-    //let z = vec![];
-    //let models: [Model; 26] = [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z];
-    //return models;
-    vec![a]
+    let b = Model::new_2d(&[], &[]);
+    let c = Model::new_2d(&[], &[]);
+    let d = Model::new_2d(&[], &[]);
+    let e = Model::new_2d(&[], &[]);
+    let f = Model::new_2d(&[], &[]);
+    let g = Model::new_2d(&[], &[]);
+    let h = Model::new_2d(&[], &[]);
+    let i = Model::new_2d(&[], &[]);
+    let j = Model::new_2d(&[], &[]);
+    let k = Model::new_2d(&[], &[]);
+    let l = Model::new_2d(&[], &[]);
+    let m = Model::new_2d(&[], &[]);
+    let n = Model::new_2d(&[], &[]);
+    let o = Model::new_2d(&[], &[]);
+    let p = Model::new_2d(&[], &[]);
+    let q = Model::new_2d(&[], &[]);
+    let r = Model::new_2d(&[], &[]);
+    let s = Model::new_2d(&[], &[]);
+    let t = Model::new_2d(&[], &[]);
+    let u = Model::new_2d(&[], &[]);
+    let v = Model::new_2d(&[], &[]);
+    let w = Model::new_2d(&[], &[]);
+    let x = Model::new_2d(&[], &[]);
+    let y = Model::new_2d(&[], &[]);
+    let z = Model::new_2d(&[], &[]);
+    vec![a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z]
 }
