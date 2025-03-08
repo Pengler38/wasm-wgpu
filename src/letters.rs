@@ -59,7 +59,7 @@ impl Model {
     }
 
     // Appends self with f applied to a copy of self
-    fn append_apply(self, f: fn(Model) -> Model) -> Self{
+    fn append_apply(self, f: impl FnOnce(Model) -> Model) -> Self{
         let clone = self.clone();
         self.append(f(clone))
     }
@@ -90,12 +90,16 @@ impl Model {
         self
     }
 
-    fn mult(&self, x: f32, y: f32, z: f32) -> Model {
-        let mut clone = self.clone();
-        for vert in &mut clone.verts {
-            *vert = [x * vert[0], y * vert[1], z * vert[2]]
+    fn mult(self, x: f32, y: f32, z: f32) -> Model {
+        self.vert_op(|arr| [x * arr[0], y * arr[1], z * arr[2]])
+    }
+
+    fn vert_op<F>(mut self, f: F) -> Self 
+    where F: Fn([f32;3]) -> [f32;3] {
+        for vert in &mut self.verts {
+            *vert = f(*vert)
         }
-        clone
+        self
     }
 
     //Pass in a list of the exterior edges to extrude, or can I automatically detect exterior
@@ -109,9 +113,9 @@ fn mirror_x(m: Model) -> Model {
     m.flip().mult(-1.0, 1.0, 1.0)
 }
     
-//fn mirror_y(self) -> Self {
-//    self.flip().mult(1.0, -1.0, 1.0)
-//}
+fn mirror_y(m: Model) -> Model {
+    m.flip().vert_op(|arr| [arr[0], ((arr[1] - 0.5) * -1.0) + 0.5, arr[2]])
+}
 //
 //fn mirror_z(self) -> Self {
 //    self.flip().mult(1.0, 1.0, -1.0)
@@ -120,23 +124,23 @@ fn mirror_x(m: Model) -> Model {
 pub fn create_alphabet_models() -> Vec<Model> {
     let a = Model::rect_2d(
         [
-            (0.25, 0.1),
-            (0.4, 0.1),
-            (0.1, 0.9),
-            (0.0, 0.8),
+            (0.3, 0.1),
+            (0.5, 0.1),
+            (0.1, 1.0),
+            (0.0, 0.85),
         ],
     ).append_apply(mirror_x).append_rect_2d(
         [
-            (0.25, 0.35),
-            (0.2, 0.5),
-            (-0.2, 0.5),
-            (-0.25, 0.35),
+            (0.25, 0.45),
+            (0.2, 0.6),
+            (-0.2, 0.6),
+            (-0.25, 0.45),
         ],
     ).append_tri_2d(
         [
-            (0.0, 0.8),
-            (0.1, 0.9),
-            (-0.1, 0.9),
+            (0.0, 0.85),
+            (0.1, 1.0),
+            (-0.1, 1.0),
         ],
     );
     let b = Model::new_2d(&[], &[]);
