@@ -5,7 +5,10 @@ use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::{ActiveEventLoop, ControlFlow, EventLoop}, window::{Window, WindowId}
 };
 
+use wgpu::util::DeviceExt;
+
 mod platform_specific;
+mod letters;
 
 struct State {
     window: Arc<Window>,
@@ -15,6 +18,9 @@ struct State {
     surface: wgpu::Surface<'static>,
     surface_format: wgpu::TextureFormat,
     render_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    num_indices: u32,
 }
 
 impl State {
@@ -68,7 +74,9 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[],
+                buffers: &[
+                    letters::desc()
+                ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -104,6 +112,23 @@ impl State {
             cache: None,
         });
 
+        let models = letters::create_alphabet_models();
+
+        let vertex_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor{
+                label: Some("Vertex buffer"),
+                contents: bytemuck::cast_slice(&models[0].verts),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+        let index_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor{
+                label: Some("Index buffer"),
+                contents: bytemuck::cast_slice(&models[0].tri_idxs),
+                usage: wgpu::BufferUsages::INDEX,
+            }
+        );
+
         let state = State {
             window,
             device,
@@ -112,6 +137,9 @@ impl State {
             surface,
             surface_format,
             render_pipeline,
+            vertex_buffer,
+            index_buffer,
+            num_indices: models[0].tri_idxs.len() as u32 * 3,
         };
 
         //Configure surface for the first time
@@ -185,7 +213,9 @@ impl State {
 
         // Draw commands
         renderpass.set_pipeline(&self.render_pipeline);
-        renderpass.draw(0..3, 0..1);
+        renderpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        renderpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        renderpass.draw_indexed(0..self.num_indices, 0, 0..1);
 
         //End the render pass, releasing the borrow of encoder
         drop(renderpass);

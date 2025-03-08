@@ -8,6 +8,7 @@ edition = "2021"
 #egui = "0.30.0" #Immediate mode GUI library
 winit = "0.30.9"
 pollster = "0.4.0"
+bytemuck = "1.22.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 wgpu = "24.0.1"
