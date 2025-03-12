@@ -1,3 +1,13 @@
+// letters.rs 
+// Preston Engler
+//
+// Is it more efficient to create models in Blender and import them using widely available rust
+// libraries? Of course.
+//
+// Is it more fun to write helper methods to create models of letters with just a few f32s?
+// Definitely.
+
+
 type Vert = [f32; 3];
 
 //The vertex buffer desc of Vert
@@ -37,6 +47,24 @@ impl Model {
     // Supply the verts in counter-clockwise order so the tri points the right way
     fn tri_2d(vs: [(f32, f32); 3]) -> Self {
         Self::new_2d(&vs, &[[0, 1, 2]])
+    }
+
+    // Create a Model (and it's indexed tris) from a 2d tristrip
+    // The first 3 verts must form a counter-clockwise tri, then the rest of the verts will follow
+    // in a zig-zag fashion
+    fn tristrip_2d(vs: &[(f32, f32)]) -> Self {
+        let mut indices: Vec<[u16; 3]> = vec![];
+        let mut flip = false;
+        // Every other tri must be flipped for the tristrip to be the right direction
+        for i in 0u16..(vs.len()-2) as u16 {
+            if flip {
+                indices.push([i, i+2, i+1]);
+            } else {
+                indices.push([i, i+1, i+2])
+            }
+            flip = !flip;
+        }
+        Self::new_2d(&vs, indices.as_slice())
     }
 
     fn append_tri_2d(self, vs: [(f32, f32); 3]) -> Self {
@@ -94,6 +122,7 @@ impl Model {
         self.vert_op(|arr| [x * arr[0], y * arr[1], z * arr[2]])
     }
 
+    // uses function f on all the verts
     fn vert_op<F>(mut self, f: F) -> Self 
     where F: Fn([f32;3]) -> [f32;3] {
         for vert in &mut self.verts {
@@ -127,30 +156,36 @@ fn mirror_y(m: Model) -> Model {
 //}
 
 pub fn create_alphabet_models() -> Vec<Model> {
-    let a = Model::rect_2d( // Diagonal part of A
+    let v = Model::rect_2d( // Diagonal part of V
         [
-            (0.3, 0.1),
-            (0.5, 0.1),
-            (0.1, 1.0),
-            (0.0, 0.85),
+            (0.3, 0.9),
+            (0.0, 0.15),
+            (0.1, 0.0),
+            (0.5, 0.9),
         ]
-    ).append_apply(mirror_x).append_rect_2d( // Center bar of A
+    ).append_apply(mirror_x).append_tri_2d( // Additional tri to connect the two diagonal parts of V
+        [
+            (0.0, 0.15),
+            (-0.1, 0.0),
+            (0.1, 0.0),
+        ]
+    );
+    let a = mirror_y(v.clone()).append_rect_2d( // Center bar of A
         [
             (0.25, 0.45),
             (0.2, 0.6),
             (-0.2, 0.6),
             (-0.25, 0.45),
         ]
-    ).append_tri_2d( // Additional tri to connect the two diagonal parts of A
-        [
-            (0.0, 0.85),
-            (0.1, 1.0),
-            (-0.1, 1.0),
-        ]
     );
-    let b = Model::new_2d(&[], &[]);
     let c = Model::new_2d(&[], &[]);
     let d = Model::new_2d(&[], &[]);
+    let b = d.clone() // B is just 2 D's
+        .vert_op(|v| [v[0], (v[1] * 0.5) + 0.5, v[2]])
+        .append(
+            d.clone()
+            .vert_op(|v| [v[0], v[1] * 0.5, v[2]])
+        );
     let e = Model::rect_2d( // Top and bottom flanges of E
         [
             (-0.2, 0.0),
@@ -173,7 +208,7 @@ pub fn create_alphabet_models() -> Vec<Model> {
             (-0.2, 0.6),
         ]
     );
-    let f = Model::new_2d(&[], &[]);
+    let f = Model::new_2d(&[], &[]); //F shares parts with E
     let g = Model::new_2d(&[], &[]);
     let h = Model::rect_2d( // Vertical part of H
         [
@@ -208,7 +243,7 @@ pub fn create_alphabet_models() -> Vec<Model> {
             (-0.5, 1.0),
         ]
     );
-    let m = Model::new_2d(&[], &[]);
+    // m will be done at a later line
     let n = Model::new_2d(&[], &[]);
     let o = Model::rect_2d( // The diagonal part of the O
         [
@@ -240,10 +275,14 @@ pub fn create_alphabet_models() -> Vec<Model> {
     let s = Model::new_2d(&[], &[]);
     let t = Model::new_2d(&[], &[]);
     let u = Model::new_2d(&[], &[]);
-    let v = Model::new_2d(&[], &[]);
-    let w = Model::new_2d(&[], &[]);
+    let w = v.clone()
+        .vert_op(|v| [(v[0] * 0.6) + 0.25, v[1], v[2]] ) // Add 0.5 to the x dimension of each vert
+        .append_apply(mirror_x);
     let x = Model::new_2d(&[], &[]);
     let y = Model::new_2d(&[], &[]);
     let z = Model::new_2d(&[], &[]);
+
+    let m = mirror_y(w.clone()); //Simply an upside down M
+
     vec![a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z]
 }
