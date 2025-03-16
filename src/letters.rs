@@ -8,10 +8,24 @@
 // Definitely.
 
 
-type Vert = [f32; 3];
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vert {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+impl Vert {
+    fn new_white(position: [f32; 3]) -> Self {
+        Vert {
+            position,
+            color: [1.0, 1.0, 1.0],
+        }
+    }
+}
 
 //The vertex buffer desc of Vert
-const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x3];
+const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
 pub fn desc() -> wgpu::VertexBufferLayout<'static>{
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Vert>() as wgpu::BufferAddress,
@@ -32,7 +46,7 @@ impl Model {
     fn new_2d(vs: &[(f32, f32)], ts: &[[u16; 3]]) -> Self {
         let mut verts: Vec<Vert> = vec![];
         for &(x, y) in vs {
-            verts.push([x, y, 0.0]);
+            verts.push(Vert::new_white([x, y, 0.0]));
         }
         let mut tri_idxs: Vec<[u16; 3]> = vec![];
         for &t in ts {
@@ -119,14 +133,14 @@ impl Model {
     }
 
     fn mult(self, x: f32, y: f32, z: f32) -> Model {
-        self.vert_op(|arr| [x * arr[0], y * arr[1], z * arr[2]])
+        self.vert_pos_op( |arr| [x * arr[0], y * arr[1], z * arr[2]] )
     }
 
-    // uses function f on all the verts
-    fn vert_op<F>(mut self, f: F) -> Self 
+    // uses function f on all the vert positions
+    fn vert_pos_op<F>(mut self, f: F) -> Self 
     where F: Fn([f32;3]) -> [f32;3] {
         for vert in &mut self.verts {
-            *vert = f(*vert)
+            *vert = Vert{ position: f(vert.position), color: vert.color }
         }
         self
     }
@@ -148,7 +162,7 @@ fn mirror_x(m: Model) -> Model {
 }
     
 fn mirror_y(m: Model) -> Model {
-    m.flip().vert_op(|arr| [arr[0], ((arr[1] - 0.5) * -1.0) + 0.5, arr[2]])
+    m.flip().vert_pos_op(|arr| [arr[0], ((arr[1] - 0.5) * -1.0) + 0.5, arr[2]])
 }
 //
 //fn mirror_z(self) -> Self {
@@ -181,10 +195,10 @@ pub fn create_alphabet_models() -> Vec<Model> {
     let c = Model::new_2d(&[], &[]);
     let d = Model::new_2d(&[], &[]);
     let b = d.clone() // B is just 2 D's
-        .vert_op(|v| [v[0], (v[1] * 0.5) + 0.5, v[2]])
+        .vert_pos_op(|v| [v[0], (v[1] * 0.5) + 0.5, v[2]])
         .append(
             d.clone()
-            .vert_op(|v| [v[0], v[1] * 0.5, v[2]])
+            .vert_pos_op(|v| [v[0], v[1] * 0.5, v[2]])
         );
     let e = Model::rect_2d( // Top and bottom flanges of E
         [
@@ -276,7 +290,7 @@ pub fn create_alphabet_models() -> Vec<Model> {
     let t = Model::new_2d(&[], &[]);
     let u = Model::new_2d(&[], &[]);
     let w = v.clone()
-        .vert_op(|v| [(v[0] * 0.6) + 0.25, v[1], v[2]] ) // Add 0.5 to the x dimension of each vert
+        .vert_pos_op(|v| [(v[0] * 0.6) + 0.25, v[1], v[2]] ) // Add 0.5 to the x dimension of each vert
         .append_apply(mirror_x);
     let x = Model::new_2d(&[], &[]);
     let y = Model::new_2d(&[], &[]);
