@@ -42,6 +42,10 @@ pub struct Model {
 
 impl Model {
 
+    pub fn number_indices(&self) -> u32 {
+        self.tri_idxs.len() as u32 * 3
+    }
+
     // Takes in verts and indices, except the verts are only the x and y
     fn new_2d(vs: &[(f32, f32)], ts: &[[u16; 3]]) -> Self {
         let mut verts: Vec<Vert> = vec![];

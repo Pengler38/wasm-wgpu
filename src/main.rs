@@ -10,6 +10,12 @@ use wgpu::util::DeviceExt;
 mod platform_specific;
 mod letters;
 
+struct Model {
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    num_indices: u32,
+}
+
 struct State {
     window: Arc<Window>,
     device: wgpu::Device,
@@ -18,13 +24,11 @@ struct State {
     surface: wgpu::Surface<'static>,
     surface_format: wgpu::TextureFormat,
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
+    models: Vec<Model>,
 }
 
 impl State {
-    async fn new(window: Arc<Window>) -> State {
+    async fn new(window: Arc<Window>, alphabet: &Vec<letters::Model>) -> State {
 
         let instance_descriptor = platform_specific::instance_descriptor();
         let instance = wgpu::Instance::new(&instance_descriptor);
@@ -112,22 +116,25 @@ impl State {
             cache: None,
         });
 
-        let models = letters::create_alphabet_models();
-
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor{
-                label: Some("Vertex buffer"),
-                contents: bytemuck::cast_slice(&models[0].verts),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
-        let index_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor{
-                label: Some("Index buffer"),
-                contents: bytemuck::cast_slice(&models[0].tri_idxs),
-                usage: wgpu::BufferUsages::INDEX,
-            }
-        );
+        let mut models: Vec<Model> = vec![];
+        for letter in alphabet {
+            let model = Model {
+                vertex_buffer: device.create_buffer_init(
+                    &wgpu::util::BufferInitDescriptor{
+                        label: Some("Vertex buffer"),
+                        contents: bytemuck::cast_slice(&letter.verts),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }),
+                index_buffer: device.create_buffer_init(
+                    &wgpu::util::BufferInitDescriptor{
+                        label: Some("Index buffer"),
+                        contents: bytemuck::cast_slice(&letter.tri_idxs),
+                        usage: wgpu::BufferUsages::INDEX,
+                    }),
+                num_indices: letter.number_indices(),
+            };
+            models.push(model);
+        }
 
         let state = State {
             window,
@@ -137,9 +144,7 @@ impl State {
             surface,
             surface_format,
             render_pipeline,
-            vertex_buffer,
-            index_buffer,
-            num_indices: models[0].tri_idxs.len() as u32 * 3,
+            models,
         };
 
         //Configure surface for the first time
@@ -193,7 +198,7 @@ impl State {
                 ..Default::default()
             });
 
-        //Renders a green screen
+        //Renders the content
         let mut encoder = self.device.create_command_encoder(&Default::default());
         //Create the render pass which will clear the screen
         let mut renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -213,9 +218,9 @@ impl State {
 
         // Draw commands
         renderpass.set_pipeline(&self.render_pipeline);
-        renderpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        renderpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        renderpass.draw_indexed(0..self.num_indices, 0, 0..1);
+        renderpass.set_vertex_buffer(0, self.models[0].vertex_buffer.slice(..));
+        renderpass.set_index_buffer(self.models[0].index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        renderpass.draw_indexed(0..self.models[0].num_indices, 0, 0..1);
 
         //End the render pass, releasing the borrow of encoder
         drop(renderpass);
@@ -227,9 +232,10 @@ impl State {
     }
 }
 
-#[derive(Default)]
 struct App {
     state: Option<State>,
+    alphabet_models: Vec<letters::Model>,
+    content: String,
 }
 
 impl ApplicationHandler for App {
@@ -242,8 +248,7 @@ impl ApplicationHandler for App {
                 .unwrap(),
         );
 
-
-        let state = pollster::block_on(State::new(window.clone()));
+        let state = pollster::block_on(State::new(window.clone(), &self.alphabet_models));
         self.state = Some(state);
 
         window.request_redraw();
@@ -279,14 +284,25 @@ fn main() -> Result<(), winit::error::EventLoopError>{
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
+    let alphabet_models = letters::create_alphabet_models();
+    let content = "hello".to_string();
+
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut app = App::default();
+        let mut app = App {
+            state: None,
+            alphabet_models,
+            content,
+        };
         event_loop.run_app(&mut app)?;
     }
     #[cfg(target_arch = "wasm32")]
     {
-        let app = App::default();
+        let app = App {
+            state: None,
+            alphabet_models,
+            content,
+        };
 
         //Spawn_app is similar to run_app, but preferred for wasm since it does not require using
         //exceptions for control flow and cluttering the web console
