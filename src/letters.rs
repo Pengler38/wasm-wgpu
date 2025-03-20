@@ -149,12 +149,12 @@ impl Model {
         self
     }
 
-    // Resets the texture coordinates to = the x and y vertex positions
-    // Use only when the model x and y coords are within (0,0) to (1,1),
+    // Resets the texture coordinates to = the x+0.5 and y vertex positions
+    // Use only when the model x and y coords are within x=[-0.5,0.5] and y=[0,1],
     // unless you actually want clamping/wrapping on the texture
     fn reset_tex_coords(mut self) -> Self {
         for vert in &mut self.verts {
-            vert.tex_coords = [vert.position[0], vert.position[1]];
+            vert.tex_coords = [vert.position[0] + 0.5, vert.position[1]];
         }
         self
     }
