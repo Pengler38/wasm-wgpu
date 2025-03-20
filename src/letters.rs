@@ -12,20 +12,20 @@
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vert {
     position: [f32; 3],
-    color: [f32; 3],
+    tex_coords: [f32; 2],
 }
 
 impl Vert {
     fn new_white(position: [f32; 3]) -> Self {
         Vert {
             position,
-            color: [1.0, 1.0, 1.0],
+            tex_coords: [position[0], position[1]],
         }
     }
 }
 
 //The vertex buffer desc of Vert
-const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
 pub fn desc() -> wgpu::VertexBufferLayout<'static>{
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Vert>() as wgpu::BufferAddress,
@@ -144,7 +144,17 @@ impl Model {
     fn vert_pos_op<F>(mut self, f: F) -> Self 
     where F: Fn([f32;3]) -> [f32;3] {
         for vert in &mut self.verts {
-            *vert = Vert{ position: f(vert.position), color: vert.color }
+            *vert = Vert{ position: f(vert.position), tex_coords: vert.tex_coords }
+        }
+        self
+    }
+
+    // Resets the texture coordinates to = the x and y vertex positions
+    // Use only when the model x and y coords are within (0,0) to (1,1),
+    // unless you actually want clamping/wrapping on the texture
+    fn reset_tex_coords(mut self) -> Self {
+        for vert in &mut self.verts {
+            vert.tex_coords = [vert.position[0], vert.position[1]];
         }
         self
     }
@@ -303,4 +313,41 @@ pub fn create_alphabet_models() -> Vec<Model> {
     let m = mirror_y(w.clone()); //Simply an upside down M
 
     vec![a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z]
+        .into_iter()
+        .map(|l| l.reset_tex_coords())
+        .collect()
+}
+
+#[derive(Clone)]
+pub struct Texture {
+    pub rgba_values: Vec<[u8; 4]>, //RGBA
+    pub height: u32,
+    pub width: u32,
+}
+
+impl Texture {
+    fn set_pixel(&mut self, x: u32, y: u32, pixel: [u8; 4]) {
+        let idx = (x + y * self.width) as usize;
+        self.rgba_values[idx] = pixel;
+    }
+}
+
+// Outputs a generated RGBA texture
+// Just a simple test gradient for now
+pub fn create_letter_texture() -> Texture {
+    const SIZE: usize = 512;
+    let mut tex = Texture {
+        rgba_values: Vec::with_capacity(SIZE * SIZE),
+        height: SIZE as u32,
+        width: SIZE as u32,
+    };
+    tex.rgba_values.resize(SIZE * SIZE, [0, 0, 0, 0]);
+    
+    for y in 0..tex.height {
+        for x in 0..tex.width {
+            let a = ((y * 255) as f32 / SIZE as f32) as u8;
+            tex.set_pixel(x, y, [a, a, 100, 255]);
+        }
+    }
+    tex
 }

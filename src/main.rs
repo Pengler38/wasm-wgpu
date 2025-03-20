@@ -25,10 +25,11 @@ struct State {
     surface_format: wgpu::TextureFormat,
     render_pipeline: wgpu::RenderPipeline,
     models: Vec<Model>,
+    letter_bind_group: wgpu::BindGroup,
 }
 
 impl State {
-    async fn new(window: Arc<Window>, alphabet: &Vec<letters::Model>) -> State {
+    async fn new(window: Arc<Window>, content: &Content) -> State {
 
         let instance_descriptor = platform_specific::instance_descriptor();
         let instance = wgpu::Instance::new(&instance_descriptor);
@@ -59,21 +60,107 @@ impl State {
             .copied()
             .unwrap_or(cap.formats[0]);
 
+        // Handle the letter texture
+        let texture_size = wgpu::Extent3d {
+            width: content.letter_texture.width,
+            height: content.letter_texture.height,
+            depth_or_array_layers: 1,
+        };
+
+        let letter_texture = device.create_texture(
+            &wgpu::TextureDescriptor {
+                size: texture_size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                label: Some("letter_texture"),
+                view_formats: &[],
+            }
+        );
+
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfoBase {
+                texture: &letter_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(content.letter_texture.rgba_values.as_slice()),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * content.letter_texture.width),
+                rows_per_image: Some(content.letter_texture.height),
+            },
+            texture_size,
+        );
+
+        let letter_texture_view = letter_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let letter_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let letter_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+            label: Some("texture_bind_group_layout"),
+        });
+
+        let letter_bind_group = device.create_bind_group(
+            &wgpu::BindGroupDescriptor {
+                layout: &letter_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&letter_texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&letter_sampler),
+                    },
+                ],
+                label: Some("letter_bind_group"),
+            }
+        );
+
 
         //Create the Render Pipeline
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
+            label: Some("shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/shader.wgsl").into()),
         });
 
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render pipeline layout"),
-            bind_group_layouts: &[],
+            label: Some("render_pipeline_layout"),
+            bind_group_layouts: &[&letter_bind_group_layout],
             push_constant_ranges: &[],
         });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
+            label: Some("render_pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -117,17 +204,17 @@ impl State {
         });
 
         let mut models: Vec<Model> = vec![];
-        for letter in alphabet {
+        for letter in &content.alphabet_models {
             let model = Model {
                 vertex_buffer: device.create_buffer_init(
                     &wgpu::util::BufferInitDescriptor{
-                        label: Some("Vertex buffer"),
+                        label: Some("vertex_buffer"),
                         contents: bytemuck::cast_slice(&letter.verts),
                         usage: wgpu::BufferUsages::VERTEX,
                     }),
                 index_buffer: device.create_buffer_init(
                     &wgpu::util::BufferInitDescriptor{
-                        label: Some("Index buffer"),
+                        label: Some("index_buffer"),
                         contents: bytemuck::cast_slice(&letter.tri_idxs),
                         usage: wgpu::BufferUsages::INDEX,
                     }),
@@ -145,6 +232,7 @@ impl State {
             surface_format,
             render_pipeline,
             models,
+            letter_bind_group,
         };
 
         //Configure surface for the first time
@@ -218,8 +306,10 @@ impl State {
 
         // Draw commands
         renderpass.set_pipeline(&self.render_pipeline);
+        renderpass.set_bind_group(0, &self.letter_bind_group, &[]);
         renderpass.set_vertex_buffer(0, self.models[0].vertex_buffer.slice(..));
         renderpass.set_index_buffer(self.models[0].index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        
         renderpass.draw_indexed(0..self.models[0].num_indices, 0, 0..1);
 
         //End the render pass, releasing the borrow of encoder
@@ -234,8 +324,14 @@ impl State {
 
 struct App {
     state: Option<State>,
+    content: Content,
+}
+
+#[derive(Clone)]
+struct Content {
     alphabet_models: Vec<letters::Model>,
-    content: String,
+    text: String,
+    letter_texture: letters::Texture,
 }
 
 impl ApplicationHandler for App {
@@ -248,7 +344,7 @@ impl ApplicationHandler for App {
                 .unwrap(),
         );
 
-        let state = pollster::block_on(State::new(window.clone(), &self.alphabet_models));
+        let state = pollster::block_on(State::new(window.clone(), &self.content));
         self.state = Some(state);
 
         window.request_redraw();
@@ -285,25 +381,25 @@ fn main() -> Result<(), winit::error::EventLoopError>{
     event_loop.set_control_flow(ControlFlow::Poll);
 
     let alphabet_models = letters::create_alphabet_models();
-    let content = "hello".to_string();
+    let text = "hello".to_string();
+    let letter_texture = letters::create_letter_texture();
 
+    #[allow(unused_mut)] // mut used in desktop and not in wasm32
+    let mut app = App {
+        state: None,
+        content: Content {
+            alphabet_models,
+            text,
+            letter_texture,
+        },
+    };
+        
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let mut app = App {
-            state: None,
-            alphabet_models,
-            content,
-        };
         event_loop.run_app(&mut app)?;
     }
     #[cfg(target_arch = "wasm32")]
     {
-        let app = App {
-            state: None,
-            alphabet_models,
-            content,
-        };
-
         //Spawn_app is similar to run_app, but preferred for wasm since it does not require using
         //exceptions for control flow and cluttering the web console
         use winit::platform::web::EventLoopExtWebSys;
