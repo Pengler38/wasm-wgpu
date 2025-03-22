@@ -9,6 +9,7 @@ use wgpu::util::DeviceExt;
 
 mod platform_specific;
 mod letters;
+mod texture;
 
 struct Model {
     vertex_buffer: wgpu::Buffer,
@@ -25,7 +26,7 @@ struct State {
     surface_format: wgpu::TextureFormat,
     render_pipeline: wgpu::RenderPipeline,
     models: Vec<Model>,
-    letter_bind_group: wgpu::BindGroup,
+    bind_group: wgpu::BindGroup,
 }
 
 impl State {
@@ -60,54 +61,11 @@ impl State {
             .copied()
             .unwrap_or(cap.formats[0]);
 
-        // Handle the letter texture
-        let texture_size = wgpu::Extent3d {
-            width: content.letter_texture.width,
-            height: content.letter_texture.height,
-            depth_or_array_layers: 1,
-        };
+        // Load the letter texture into the gpu
+        let letter_texture = texture::GpuTexture::from_rgbatexture( &content.letter_texture, &device, &queue, "letter_texture" );
 
-        let letter_texture = device.create_texture(
-            &wgpu::TextureDescriptor {
-                size: texture_size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                label: Some("letter_texture"),
-                view_formats: &[],
-            }
-        );
-
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfoBase {
-                texture: &letter_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            bytemuck::cast_slice(content.letter_texture.rgba_values.as_slice()),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * content.letter_texture.width),
-                rows_per_image: Some(content.letter_texture.height),
-            },
-            texture_size,
-        );
-
-        let letter_texture_view = letter_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let letter_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
-
-        let letter_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        // Create the bind group
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -126,26 +84,25 @@ impl State {
                     count: None,
                 },
             ],
-            label: Some("texture_bind_group_layout"),
+            label: Some("bind_group_layout"),
         });
 
-        let letter_bind_group = device.create_bind_group(
+        let bind_group = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                layout: &letter_bind_group_layout,
+                layout: &bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&letter_texture_view),
+                        resource: wgpu::BindingResource::TextureView(&letter_texture.view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&letter_sampler),
+                        resource: wgpu::BindingResource::Sampler(&letter_texture.sampler),
                     },
                 ],
-                label: Some("letter_bind_group"),
+                label: Some("bind_group"),
             }
         );
-
 
         //Create the Render Pipeline
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -155,7 +112,7 @@ impl State {
 
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("render_pipeline_layout"),
-            bind_group_layouts: &[&letter_bind_group_layout],
+            bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -232,7 +189,7 @@ impl State {
             surface_format,
             render_pipeline,
             models,
-            letter_bind_group,
+            bind_group,
         };
 
         //Configure surface for the first time
@@ -295,7 +252,7 @@ impl State {
                 view: &output_texture_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0, }),
+                    load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0, }),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -306,7 +263,7 @@ impl State {
 
         // Draw commands
         renderpass.set_pipeline(&self.render_pipeline);
-        renderpass.set_bind_group(0, &self.letter_bind_group, &[]);
+        renderpass.set_bind_group(0, &self.bind_group, &[]);
         renderpass.set_vertex_buffer(0, self.models[0].vertex_buffer.slice(..));
         renderpass.set_index_buffer(self.models[0].index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         
@@ -331,7 +288,7 @@ struct App {
 struct Content {
     alphabet_models: Vec<letters::Model>,
     text: String,
-    letter_texture: letters::Texture,
+    letter_texture: texture::RgbaTexture,
 }
 
 impl ApplicationHandler for App {

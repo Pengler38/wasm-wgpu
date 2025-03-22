@@ -7,6 +7,7 @@
 // Is it more fun to write helper methods to create models of letters with just a few f32s?
 // Definitely.
 
+use crate::texture;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -318,30 +319,16 @@ pub fn create_alphabet_models() -> Vec<Model> {
         .collect()
 }
 
-#[derive(Clone)]
-pub struct Texture {
-    pub rgba_values: Vec<[u8; 4]>, //RGBA
-    pub height: u32,
-    pub width: u32,
-}
-
-impl Texture {
-    fn set_pixel(&mut self, x: u32, y: u32, pixel: [u8; 4]) {
-        let idx = (x + y * self.width) as usize;
-        self.rgba_values[idx] = pixel;
-    }
-}
-
 // Outputs a generated RGBA texture
 // Just a simple test gradient for now
-pub fn create_letter_texture() -> Texture {
+pub fn create_letter_texture() -> texture::RgbaTexture {
     const SIZE: usize = 512;
-    let mut tex = Texture {
-        rgba_values: Vec::with_capacity(SIZE * SIZE),
+    let mut tex = texture::RgbaTexture {
+        values: Vec::with_capacity(SIZE * SIZE),
         height: SIZE as u32,
         width: SIZE as u32,
     };
-    tex.rgba_values.resize(SIZE * SIZE, [0, 0, 0, 0]);
+    tex.values.resize(SIZE * SIZE, [0, 0, 0, 0]);
     
     for y in 0..tex.height {
         for x in 0..tex.width {
