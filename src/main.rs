@@ -17,7 +17,55 @@ struct Model {
     num_indices: u32,
 }
 
+struct Camera {
+    eye: cgmath::Point3<f32>,
+    target: cgmath::Point3<f32>,
+    up: cgmath::Vector3<f32>,
+    aspect: f32,
+    fovy: f32,
+    znear: f32,
+    zfar: f32,
+}
+
+impl Camera {
+    fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
+        let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
+        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
+        OPENGL_TO_WGPU_MATRIX * proj * view
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct CameraUniform {
+    view_proj: [[f32; 4]; 4],
+}
+
+impl CameraUniform {
+    fn new() -> Self {
+        use cgmath::SquareMatrix;
+        Self {
+            view_proj: cgmath::Matrix4::identity().into(),
+        }
+    }
+
+    fn update_view_proj(&mut self, camera: &Camera) {
+        self.view_proj = camera.build_view_projection_matrix().into();
+    }
+}
+
+#[rustfmt::skip]
+pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 0.5, 0.5,
+    0.0, 0.0, 0.0, 1.0,
+);
+
 struct State {
+    camera: Camera,
+
+    //wgpu oriented portion of state
     window: Arc<Window>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -26,12 +74,13 @@ struct State {
     surface_format: wgpu::TextureFormat,
     render_pipeline: wgpu::RenderPipeline,
     models: Vec<Model>,
-    bind_group: wgpu::BindGroup,
+    bind_groups: Vec<wgpu::BindGroup>,
 }
 
 impl State {
-    async fn new(window: Arc<Window>, content: &Content) -> State {
+    async fn new(window: Arc<Window>, init_content: &InitContent) -> State {
 
+        // Handle wgpu portion of State creation:
         let instance_descriptor = platform_specific::instance_descriptor();
         let instance = wgpu::Instance::new(&instance_descriptor);
 
@@ -61,11 +110,15 @@ impl State {
             .copied()
             .unwrap_or(cap.formats[0]);
 
+        // Start populating the bind_groups
+        let mut bind_groups = vec![];
+        let mut bind_group_layouts = vec![];
+
         // Load the letter texture into the gpu
-        let letter_texture = texture::GpuTexture::from_rgbatexture( &content.letter_texture, &device, &queue, "letter_texture" );
+        let letter_texture = texture::GpuTexture::from_rgbatexture( &init_content.letter_texture, &device, &queue, "letter_texture" );
 
         // Create the bind group
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -87,9 +140,9 @@ impl State {
             label: Some("bind_group_layout"),
         });
 
-        let bind_group = device.create_bind_group(
+        let texture_bind_group = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                layout: &bind_group_layout,
+                layout: &texture_bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
@@ -103,6 +156,58 @@ impl State {
                 label: Some("bind_group"),
             }
         );
+        bind_group_layouts.push(&texture_bind_group_layout);
+        bind_groups.push(texture_bind_group);
+
+        // Camera initialization
+        let camera = Camera {
+            eye: (0.0, 1.0, 2.0).into(),
+            target: (0.0, 0.0, 0.0).into(),
+            up: cgmath::Vector3::unit_y(),
+            aspect: size.width as f32 / size.height as f32,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        };
+
+        let mut camera_uniform = CameraUniform::new();
+        camera_uniform.update_view_proj(&camera);
+
+        let camera_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("camera_buffer"),
+                contents: bytemuck::cast_slice(&[camera_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+
+        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+            label: Some("camera_bind_group_layout"),
+        });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                }
+            ],
+            label: Some("camera_bind_group"),
+        });
+        bind_group_layouts.push(&camera_bind_group_layout);
+        bind_groups.push(camera_bind_group);
 
         //Create the Render Pipeline
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -112,7 +217,7 @@ impl State {
 
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("render_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts: bind_group_layouts.as_slice(),
             push_constant_ranges: &[],
         });
 
@@ -161,7 +266,7 @@ impl State {
         });
 
         let mut models: Vec<Model> = vec![];
-        for letter in &content.alphabet_models {
+        for letter in &init_content.alphabet_models {
             let model = Model {
                 vertex_buffer: device.create_buffer_init(
                     &wgpu::util::BufferInitDescriptor{
@@ -180,7 +285,9 @@ impl State {
             models.push(model);
         }
 
+
         let state = State {
+            camera,
             window,
             device,
             queue,
@@ -189,7 +296,7 @@ impl State {
             surface_format,
             render_pipeline,
             models,
-            bind_group,
+            bind_groups,
         };
 
         //Configure surface for the first time
@@ -263,7 +370,9 @@ impl State {
 
         // Draw commands
         renderpass.set_pipeline(&self.render_pipeline);
-        renderpass.set_bind_group(0, &self.bind_group, &[]);
+        for (i, bind_group) in self.bind_groups.iter().enumerate() {
+            renderpass.set_bind_group(i as u32, bind_group, &[]);
+        }
         renderpass.set_vertex_buffer(0, self.models[0].vertex_buffer.slice(..));
         renderpass.set_index_buffer(self.models[0].index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         
@@ -281,11 +390,11 @@ impl State {
 
 struct App {
     state: Option<State>,
-    content: Content,
+    init_content: InitContent,
 }
 
-#[derive(Clone)]
-struct Content {
+// InitContent includes (effectively static) content generated during initialization
+struct InitContent {
     alphabet_models: Vec<letters::Model>,
     text: String,
     letter_texture: texture::RgbaTexture,
@@ -301,7 +410,7 @@ impl ApplicationHandler for App {
                 .unwrap(),
         );
 
-        let state = pollster::block_on(State::new(window.clone(), &self.content));
+        let state = pollster::block_on(State::new(window.clone(), &self.init_content));
         self.state = Some(state);
 
         window.request_redraw();
@@ -344,7 +453,7 @@ fn main() -> Result<(), winit::error::EventLoopError>{
     #[allow(unused_mut)] // mut used in desktop and not in wasm32
     let mut app = App {
         state: None,
-        content: Content {
+        init_content: InitContent {
             alphabet_models,
             text,
             letter_texture,
