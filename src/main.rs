@@ -28,6 +28,18 @@ struct Camera {
 }
 
 impl Camera {
+    fn new_default(aspect_ratio: f32) -> Self {
+        Camera {
+            eye: (0.0, 1.0, 2.0).into(),
+            target: (0.0, 0.0, 0.0).into(),
+            up: cgmath::Vector3::unit_y(),
+            aspect: aspect_ratio,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        }
+    }
+
     fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
@@ -64,8 +76,10 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
 
 struct State {
     camera: Camera,
+    camera_uniform: CameraUniform,
 
     //wgpu oriented portion of state
+    camera_buffer: wgpu::Buffer,
     window: Arc<Window>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -160,15 +174,7 @@ impl State {
         bind_groups.push(texture_bind_group);
 
         // Camera initialization
-        let camera = Camera {
-            eye: (0.0, 1.0, 2.0).into(),
-            target: (0.0, 0.0, 0.0).into(),
-            up: cgmath::Vector3::unit_y(),
-            aspect: size.width as f32 / size.height as f32,
-            fovy: 45.0,
-            znear: 0.1,
-            zfar: 100.0,
-        };
+        let camera = Camera::new_default(size.width as f32 / size.height as f32);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
@@ -288,6 +294,8 @@ impl State {
 
         let state = State {
             camera,
+            camera_uniform,
+            camera_buffer,
             window,
             device,
             queue,
@@ -329,10 +337,17 @@ impl State {
         self.surface.configure(&self.device, &surface_config);
     }
 
+    fn reconfigure_camera(&mut self) {
+        self.camera = Camera::new_default( self.size.width as f32 / self.size.height as f32);
+        self.camera_uniform.update_view_proj(&self.camera);
+        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+    }
+
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.size = new_size;
         //Reconfigure the surface
         self.configure_surface();
+        self.reconfigure_camera();
     }
 
     fn render(&mut self) {
