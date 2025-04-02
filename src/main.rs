@@ -28,7 +28,7 @@ struct Instance {
 impl Instance {
     fn to_raw(&self) -> InstanceRaw {
         InstanceRaw {
-            model: ( cgmath::Matrix4::from_translation(self.position) * cgmath::Matrix4::from(self.rotation) * self.scale ).into(),
+            model: ( cgmath::Matrix4::from_translation(self.position) * cgmath::Matrix4::from(self.rotation) * cgmath::Matrix4::from_scale(self.scale) ).into(),
         }
     }
 }
@@ -529,10 +529,9 @@ fn get_letter_instances(text: &str) -> [Vec<Instance>; 26] {
 
     for (i, char) in text.chars().enumerate() {
         let width_per_character = length / num_characters as f32;
-        let scale = width_per_character;
+        let scale = width_per_character * 0.75;
         let x = LEFT_BOUND
-            + i as f32 * width_per_character
-            + 0.5;
+            + (i as f32 + 0.5) * width_per_character;
         let position = cgmath::Vector3 { x, y: 0.0, z: -5.0 };
         let rotation = if position.is_zero() {
             cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
