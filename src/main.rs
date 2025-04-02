@@ -1,3 +1,5 @@
+use cgmath::prelude::*;
+
 use std::sync::Arc;
 use pollster;
 
@@ -15,6 +17,39 @@ struct Model {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
+}
+
+struct Instance {
+    position: cgmath::Vector3<f32>,
+    rotation: cgmath::Quaternion<f32>,
+    scale: f32,
+}
+
+impl Instance {
+    fn to_raw(&self) -> InstanceRaw {
+        InstanceRaw {
+            model: ( cgmath::Matrix4::from_translation(self.position) * cgmath::Matrix4::from(self.rotation) * self.scale ).into(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct InstanceRaw {
+    model: [[f32; 4]; 4],
+}
+
+impl InstanceRaw {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        use std::mem;
+        const ATTRIBS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4];
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<InstanceRaw>() as wgpu::BufferAddress,
+            // Steps on each change of the instance, not the vertex
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &ATTRIBS
+        }
+    }
 }
 
 struct Camera {
@@ -88,6 +123,8 @@ struct State {
     surface_format: wgpu::TextureFormat,
     render_pipeline: wgpu::RenderPipeline,
     models: Vec<Model>,
+    instances: [Vec<Instance>; 26],
+    instance_buffers: [wgpu::Buffer; 26],
     bind_groups: Vec<wgpu::BindGroup>,
 }
 
@@ -234,7 +271,8 @@ impl State {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 buffers: &[
-                    letters::desc()
+                    letters::desc(),
+                    InstanceRaw::desc(),
                 ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -271,6 +309,7 @@ impl State {
             cache: None,
         });
 
+        // Load the alphabet models into buffers
         let mut models: Vec<Model> = vec![];
         for letter in &init_content.alphabet_models {
             let model = Model {
@@ -291,6 +330,21 @@ impl State {
             models.push(model);
         }
 
+        // Get the required instances from the text display
+        let instances: [Vec<Instance>; 26] = get_letter_instances(&init_content.text);
+        let instance_data: [Vec<InstanceRaw>; 26] = instances.iter().map(
+            |instances| instances.iter().map(
+                |instance| instance.to_raw()
+            ).collect::<Vec<InstanceRaw>>()
+        ).collect::<Vec<_>>().try_into().unwrap();
+
+        let instance_buffers: [wgpu::Buffer; 26] = instance_data.iter().enumerate().map(
+            |(i, v)| device.create_buffer_init( &wgpu::util::BufferInitDescriptor {
+                label: Some(&("instance_buffer index: ".to_string() + &i.to_string())),
+                contents: bytemuck::cast_slice(&v),
+                usage: wgpu::BufferUsages::VERTEX,
+            })
+        ).collect::<Vec<_>>().try_into().unwrap();
 
         let state = State {
             camera,
@@ -304,6 +358,8 @@ impl State {
             surface_format,
             render_pipeline,
             models,
+            instances,
+            instance_buffers,
             bind_groups,
         };
 
@@ -388,10 +444,17 @@ impl State {
         for (i, bind_group) in self.bind_groups.iter().enumerate() {
             renderpass.set_bind_group(i as u32, bind_group, &[]);
         }
-        renderpass.set_vertex_buffer(0, self.models[0].vertex_buffer.slice(..));
-        renderpass.set_index_buffer(self.models[0].index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        
-        renderpass.draw_indexed(0..self.models[0].num_indices, 0, 0..1);
+
+        // Draw each letter
+        for letter in 0..26 {
+            if self.instances[letter].len() > 0 {
+                renderpass.set_vertex_buffer(0, self.models[letter].vertex_buffer.slice(..));
+                renderpass.set_vertex_buffer(1, self.instance_buffers[letter].slice(..));
+                renderpass.set_index_buffer(self.models[letter].index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+                renderpass.draw_indexed(0..self.models[letter].num_indices, 0, 0..self.instances[letter].len() as u32);
+            }
+        }
 
         //End the render pass, releasing the borrow of encoder
         drop(renderpass);
@@ -450,6 +513,47 @@ impl ApplicationHandler for App {
             }
             _ => (),
         }
+    }
+}
+
+
+// Translates a string into the equivalent instances to render the correct letters at the right locations
+// Currently does only one line and only handles lowercase letters
+// Instances will be from x=[-5, 5], at z=???. Each letter will be scaled down in height to match the width
+fn get_letter_instances(text: &str) -> [Vec<Instance>; 26] {
+    const LEFT_BOUND: f32 = -5.0;
+    const RIGHT_BOUND: f32 = 5.0;
+    let length = f32::abs(LEFT_BOUND) + f32::abs(RIGHT_BOUND);
+    let mut letter_instances: [Vec<Instance>; 26] = std::array::from_fn(|_| Vec::new());
+    let num_characters = text.len();
+
+    for (i, char) in text.chars().enumerate() {
+        let width_per_character = length / num_characters as f32;
+        let scale = width_per_character;
+        let x = LEFT_BOUND
+            + i as f32 * width_per_character
+            + 0.5;
+        let position = cgmath::Vector3 { x, y: 0.0, z: -5.0 };
+        let rotation = if position.is_zero() {
+            cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+        } else {
+            cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(0.0))
+        };
+
+        let idx = letter_index(char);
+        letter_instances[idx].push( Instance {
+            position, rotation, scale
+        });
+    }
+
+    letter_instances
+}
+
+fn letter_index(c: char) -> usize {
+    if c.is_ascii() {
+        c.to_ascii_lowercase() as usize - 97
+    } else {
+        panic!("Character passed in was not ascii!");
     }
 }
 
