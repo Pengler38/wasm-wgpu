@@ -35,7 +35,9 @@ pub fn device_descriptor<'a>() -> wgpu::DeviceDescriptor<'a> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        wgpu::DeviceDescriptor::default()
+        wgpu::DeviceDescriptor {
+            ..Default::default()
+        }
     }
 }
 

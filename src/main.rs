@@ -13,12 +13,21 @@ mod platform_specific;
 mod letters;
 mod texture;
 
-struct Model {
+#[derive(Debug)]
+struct VertexData {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
 }
 
+#[derive(Debug)]
+struct Model {
+    instances: Vec<Instance>,
+    instance_buffer: wgpu::Buffer,
+    vertex_data: VertexData,
+}
+
+#[derive(Debug)]
 struct Instance {
     position: cgmath::Vector3<f32>,
     rotation: cgmath::Quaternion<f32>,
@@ -122,10 +131,8 @@ struct State {
     surface: wgpu::Surface<'static>,
     surface_format: wgpu::TextureFormat,
     render_pipeline: wgpu::RenderPipeline,
-    models: Vec<Model>,
-    instances: [Vec<Instance>; 26],
-    instance_buffers: [wgpu::Buffer; 26],
-    bind_groups: Vec<wgpu::BindGroup>,
+    models: [Model; 26],
+    universal_bind_groups: Vec<wgpu::BindGroup>,
 }
 
 impl State {
@@ -162,7 +169,7 @@ impl State {
             .unwrap_or(cap.formats[0]);
 
         // Start populating the bind_groups
-        let mut bind_groups = vec![];
+        let mut universal_bind_groups = vec![];
         let mut bind_group_layouts = vec![];
 
         // Load the letter texture into the gpu
@@ -208,7 +215,7 @@ impl State {
             }
         );
         bind_group_layouts.push(&texture_bind_group_layout);
-        bind_groups.push(texture_bind_group);
+        universal_bind_groups.push(texture_bind_group);
 
         // Camera initialization
         let camera = Camera::new_default(size.width as f32 / size.height as f32);
@@ -223,6 +230,10 @@ impl State {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             }
         );
+
+        // Initialize the models
+        let models = create_models(&device, &init_content.text, &init_content.alphabet_models);
+
 
         let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -250,7 +261,7 @@ impl State {
             label: Some("camera_bind_group"),
         });
         bind_group_layouts.push(&camera_bind_group_layout);
-        bind_groups.push(camera_bind_group);
+        universal_bind_groups.push(camera_bind_group);
 
         //Create the Render Pipeline
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -309,43 +320,6 @@ impl State {
             cache: None,
         });
 
-        // Load the alphabet models into buffers
-        let mut models: Vec<Model> = vec![];
-        for letter in &init_content.alphabet_models {
-            let model = Model {
-                vertex_buffer: device.create_buffer_init(
-                    &wgpu::util::BufferInitDescriptor{
-                        label: Some("vertex_buffer"),
-                        contents: bytemuck::cast_slice(&letter.verts),
-                        usage: wgpu::BufferUsages::VERTEX,
-                    }),
-                index_buffer: device.create_buffer_init(
-                    &wgpu::util::BufferInitDescriptor{
-                        label: Some("index_buffer"),
-                        contents: bytemuck::cast_slice(&letter.tri_idxs),
-                        usage: wgpu::BufferUsages::INDEX,
-                    }),
-                num_indices: letter.number_indices(),
-            };
-            models.push(model);
-        }
-
-        // Get the required instances from the text display
-        let instances: [Vec<Instance>; 26] = get_letter_instances(&init_content.text);
-        let instance_data: [Vec<InstanceRaw>; 26] = instances.iter().map(
-            |instances| instances.iter().map(
-                |instance| instance.to_raw()
-            ).collect::<Vec<InstanceRaw>>()
-        ).collect::<Vec<_>>().try_into().unwrap();
-
-        let instance_buffers: [wgpu::Buffer; 26] = instance_data.iter().enumerate().map(
-            |(i, v)| device.create_buffer_init( &wgpu::util::BufferInitDescriptor {
-                label: Some(&("instance_buffer index: ".to_string() + &i.to_string())),
-                contents: bytemuck::cast_slice(&v),
-                usage: wgpu::BufferUsages::VERTEX,
-            })
-        ).collect::<Vec<_>>().try_into().unwrap();
-
         let state = State {
             camera,
             camera_uniform,
@@ -358,9 +332,7 @@ impl State {
             surface_format,
             render_pipeline,
             models,
-            instances,
-            instance_buffers,
-            bind_groups,
+            universal_bind_groups,
         };
 
         //Configure surface for the first time
@@ -441,18 +413,18 @@ impl State {
 
         // Draw commands
         renderpass.set_pipeline(&self.render_pipeline);
-        for (i, bind_group) in self.bind_groups.iter().enumerate() {
+        for (i, bind_group) in self.universal_bind_groups.iter().enumerate() {
             renderpass.set_bind_group(i as u32, bind_group, &[]);
         }
 
         // Draw each letter
-        for letter in 0..26 {
-            if self.instances[letter].len() > 0 {
-                renderpass.set_vertex_buffer(0, self.models[letter].vertex_buffer.slice(..));
-                renderpass.set_vertex_buffer(1, self.instance_buffers[letter].slice(..));
-                renderpass.set_index_buffer(self.models[letter].index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        for letter in &self.models {
+            if letter.instances.len() > 0 {
+                renderpass.set_vertex_buffer(0, letter.vertex_data.vertex_buffer.slice(..));
+                renderpass.set_vertex_buffer(1, letter.instance_buffer.slice(..));
+                renderpass.set_index_buffer(letter.vertex_data.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-                renderpass.draw_indexed(0..self.models[letter].num_indices, 0, 0..self.instances[letter].len() as u32);
+                renderpass.draw_indexed(0..letter.vertex_data.num_indices, 0, 0..letter.instances.len() as u32);
             }
         }
 
@@ -516,6 +488,57 @@ impl ApplicationHandler for App {
     }
 }
 
+fn create_models(device: &wgpu::Device, text: &str, alphabet_models: &[letters::Model]) -> [Model; 26] {
+    // Load the alphabet models into buffers
+    let vertex_data: [VertexData; 26] = alphabet_models.iter().map(
+        |letter|
+        VertexData {
+            vertex_buffer: device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor{
+                    label: Some("vertex_buffer"),
+                    contents: bytemuck::cast_slice(&letter.verts),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }),
+            index_buffer: device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor{
+                    label: Some("index_buffer"),
+                    contents: bytemuck::cast_slice(&letter.tri_idxs),
+                    usage: wgpu::BufferUsages::INDEX,
+                }),
+            num_indices: letter.number_indices(),
+        }
+    ).collect::<Vec<_>>().try_into().unwrap();
+
+    // Get the required instances from the text display
+    let instances_list: [Vec<Instance>; 26] = get_letter_instances(text);
+
+    let instance_data: [Vec<InstanceRaw>; 26] = instances_list.iter().map(
+        |instances| instances.iter().map(
+            |instance| instance.to_raw()
+        ).collect::<Vec<InstanceRaw>>()
+    ).collect::<Vec<_>>().try_into().unwrap();
+
+    let instance_buffers: [wgpu::Buffer; 26] = instance_data.iter().enumerate().map(
+        |(i, v)| device.create_buffer_init( &wgpu::util::BufferInitDescriptor {
+            label: Some(&("instance_buffer index: ".to_string() + &i.to_string())),
+            contents: bytemuck::cast_slice(&v),
+            usage: wgpu::BufferUsages::VERTEX,
+        })
+    ).collect::<Vec<_>>().try_into().unwrap();
+
+    instances_list.into_iter()
+        .zip(instance_buffers.into_iter())
+        .zip(vertex_data.into_iter())
+        .map(
+            |((instances, instance_buffer), vertex_data)| {
+                Model {
+                    instances,
+                    instance_buffer,
+                    vertex_data,
+                }
+            }
+    ).collect::<Vec<_>>().try_into().unwrap()
+}
 
 // Translates a string into the equivalent instances to render the correct letters at the right locations
 // Currently does only one line and only handles lowercase letters
