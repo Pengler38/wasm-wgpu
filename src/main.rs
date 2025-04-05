@@ -515,8 +515,6 @@ impl ApplicationHandler for App {
 
         let state = pollster::block_on(State::new(window.clone(), &self.init_content));
         self.state = Some(state);
-
-        window.request_redraw();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -638,7 +636,7 @@ fn main() -> Result<(), winit::error::EventLoopError>{
     console_error_panic_hook::set_once(); //This should be done on init once
 
     let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll);
+    event_loop.set_control_flow(ControlFlow::Wait); // This seems to fix a winit-related performance problem I have on the web???
 
     let alphabet_models = letters::create_alphabet_models();
     let text = "hello".to_string();
