@@ -1669,6 +1669,7 @@ dependencies = [
  "cgmath",
  "console_error_panic_hook",
  "pollster",
+ "web-time",
  "wgpu",
  "winit",
 ]

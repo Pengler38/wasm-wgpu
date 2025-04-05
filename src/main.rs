@@ -1,6 +1,7 @@
 use cgmath::prelude::*;
 
 use std::sync::Arc;
+use web_time;
 use pollster;
 
 use winit::{
@@ -119,8 +120,13 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
 );
 
 struct State {
+    time: web_time::Instant,
+
     camera: Camera,
     camera_uniform: CameraUniform,
+
+    displacement: [f32; 4],
+    displacement_buffer: wgpu::Buffer,
 
     //wgpu oriented portion of state
     camera_buffer: wgpu::Buffer,
@@ -231,10 +237,6 @@ impl State {
             }
         );
 
-        // Initialize the models
-        let models = create_models(&device, &init_content.text, &init_content.alphabet_models);
-
-
         let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -262,6 +264,47 @@ impl State {
         });
         bind_group_layouts.push(&camera_bind_group_layout);
         universal_bind_groups.push(camera_bind_group);
+
+        // Initialize the models
+        let models = create_models(&device, &init_content.text, &init_content.alphabet_models);
+
+        // Displacement buffer handling
+        let displacement: [f32; 4] = [0.0; 4];
+        let displacement_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("displacement_buffer"),
+                contents: bytemuck::cast_slice(&displacement),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+        let displacement_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+            label: Some("displacement_bind_group_layout"),
+        });
+        let displacement_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &displacement_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: displacement_buffer.as_entire_binding(),
+                }
+            ],
+            label: Some("displacement_bind_group"),
+        });
+        bind_group_layouts.push(&displacement_bind_group_layout);
+        universal_bind_groups.push(displacement_bind_group);
+
 
         //Create the Render Pipeline
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -321,9 +364,12 @@ impl State {
         });
 
         let state = State {
+            time: web_time::Instant::now(),
             camera,
             camera_uniform,
             camera_buffer,
+            displacement,
+            displacement_buffer,
             window,
             device,
             queue,
@@ -379,6 +425,13 @@ impl State {
     }
 
     fn render(&mut self) {
+        // Update displacement
+        let seconds = self.time.elapsed().as_secs_f32();
+        self.displacement = [f32::sin(seconds), f32::cos(seconds), 0.0, 1.0];
+
+        // Update uniforms
+        self.queue.write_buffer(&self.displacement_buffer, 0, bytemuck::cast_slice(&self.displacement));
+
         //Create texture view
         let output = self
             .surface
