@@ -393,7 +393,7 @@ impl State {
             start_time: web_time::Instant::now(),
             time_buffer,
             cursor_clicked: false,
-            cursor_pos: [0.5, 0.5],
+            cursor_pos: [0.5, 1.0],
             camera,
             camera_uniform,
             camera_buffer,
@@ -456,7 +456,7 @@ impl State {
     fn render(&mut self) {
         // Update displacement
         let seconds = self.start_time.elapsed().as_secs_f32();
-        self.displacement = [2.0 * (self.cursor_pos[0] - 0.5), -2.0 * (self.cursor_pos[1] - 0.5), 0.0, 1.0];
+        self.displacement = [2.0 * (self.cursor_pos[0] - 0.5), -2.0 * (self.cursor_pos[1] - 0.5), 0.0, 0.2];
 
         // Update uniforms
         self.queue.write_buffer(&self.displacement_buffer, 0, bytemuck::cast_slice(&self.displacement));
