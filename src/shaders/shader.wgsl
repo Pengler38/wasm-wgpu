@@ -10,9 +10,9 @@ struct CameraUniform {
 @group(1) @binding(0)
 var<uniform> camera: CameraUniform;
 
-// Displacement is xyz and magnitude in the 4th position
+// Displacement target is xyz and magnitude in the 4th position
 @group(2) @binding(0)
-var<uniform> displacement: vec4<f32>;
+var<uniform> displacement_target: vec4<f32>;
 
 struct InstanceInput {
   @location(5) model_matrix_0: vec4<f32>,
@@ -45,8 +45,11 @@ fn vs_main(
   );
   var out: VertexOutput;
   out.tex_coords = model.tex_coords;
-  out.clip_position = camera.view_proj * model_matrix * vec4<f32>(model.position, 1.0)
-    + vec4<f32>(displacement.xyz, 0.0);
+  let world_position = model_matrix * vec4<f32>(model.position, 1.0);
+  let screen_position = camera.view_proj * world_position; // Note: the w position is not 1.0 due to the camera projection
+  let displacement_strength = displacement_target.w
+  let displacement = displacement_strength * vec4<f32>(displacement_target.xyz, 0.0);
+  out.clip_position = vec4<f32>(screen_position.xyz + (displacement.xyz * screen_position.w), screen_position.w);
   return out;
 }
 

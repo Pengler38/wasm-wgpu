@@ -14,6 +14,8 @@ mod platform_specific;
 mod letters;
 mod texture;
 
+const WORLD_ZPLANE: f32 = -5.0;
+
 #[derive(Debug)]
 struct VertexData {
     vertex_buffer: wgpu::Buffer,
@@ -391,7 +393,7 @@ impl State {
             start_time: web_time::Instant::now(),
             time_buffer,
             cursor_clicked: false,
-            cursor_pos: [0.0, 0.0],
+            cursor_pos: [0.5, 0.5],
             camera,
             camera_uniform,
             camera_buffer,
@@ -454,7 +456,7 @@ impl State {
     fn render(&mut self) {
         // Update displacement
         let seconds = self.start_time.elapsed().as_secs_f32();
-        self.displacement = [f32::sin(seconds), f32::cos(seconds), 0.0, 1.0];
+        self.displacement = [2.0 * (self.cursor_pos[0] - 0.5), -2.0 * (self.cursor_pos[1] - 0.5), 0.0, 1.0];
 
         // Update uniforms
         self.queue.write_buffer(&self.displacement_buffer, 0, bytemuck::cast_slice(&self.displacement));
@@ -646,7 +648,7 @@ fn get_letter_instances(text: &str) -> [Vec<Instance>; 26] {
         let scale = width_per_character * 0.75;
         let x = LEFT_BOUND
             + (i as f32 + 0.5) * width_per_character;
-        let position = cgmath::Vector3 { x, y: 0.0, z: -5.0 };
+        let position = cgmath::Vector3 { x, y: -3.0, z: WORLD_ZPLANE };
         let rotation = if position.is_zero() {
             cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
         } else {
