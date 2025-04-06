@@ -120,7 +120,10 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
 );
 
 struct State {
-    time: web_time::Instant,
+    start_time: web_time::Instant,
+    time_buffer: wgpu::Buffer,
+    cursor_clicked: bool,
+    cursor_pos: [f32; 2],
 
     camera: Camera,
     camera_uniform: CameraUniform,
@@ -277,7 +280,14 @@ impl State {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             }
         );
-        let displacement_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let time_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("time_buffer"),
+                contents: bytemuck::cast_slice(&[0.0 as f32]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+        let misc_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -288,22 +298,36 @@ impl State {
                         min_binding_size: None,
                     },
                     count: None,
-                }
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: Some("displacement_bind_group_layout"),
         });
-        let displacement_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &displacement_bind_group_layout,
+        let misc_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &misc_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: displacement_buffer.as_entire_binding(),
-                }
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: time_buffer.as_entire_binding(),
+                },
             ],
             label: Some("displacement_bind_group"),
         });
-        bind_group_layouts.push(&displacement_bind_group_layout);
-        universal_bind_groups.push(displacement_bind_group);
+        bind_group_layouts.push(&misc_bind_group_layout);
+        universal_bind_groups.push(misc_bind_group);
 
 
         //Create the Render Pipeline
@@ -364,7 +388,10 @@ impl State {
         });
 
         let state = State {
-            time: web_time::Instant::now(),
+            start_time: web_time::Instant::now(),
+            time_buffer,
+            cursor_clicked: false,
+            cursor_pos: [0.0, 0.0],
             camera,
             camera_uniform,
             camera_buffer,
@@ -426,11 +453,12 @@ impl State {
 
     fn render(&mut self) {
         // Update displacement
-        let seconds = self.time.elapsed().as_secs_f32();
+        let seconds = self.start_time.elapsed().as_secs_f32();
         self.displacement = [f32::sin(seconds), f32::cos(seconds), 0.0, 1.0];
 
         // Update uniforms
         self.queue.write_buffer(&self.displacement_buffer, 0, bytemuck::cast_slice(&self.displacement));
+        self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[seconds]));
 
         //Create texture view
         let output = self
@@ -518,6 +546,8 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        use winit::event::{ElementState, MouseButton};
+
         let state = self.state.as_mut().unwrap();
         match event {
             WindowEvent::CloseRequested => {
@@ -533,6 +563,16 @@ impl ApplicationHandler for App {
                 //Reconfigures the size of the surface.
                 //No re-render required, this event is always followed by a redraw request
                 state.resize(size);
+            }
+            WindowEvent::MouseInput { device_id: _, state: mouse_state, button } => {
+                match (mouse_state, button) {
+                    (ElementState::Pressed, MouseButton::Left) => state.cursor_clicked = true,
+                    (ElementState::Released, MouseButton::Left) => state.cursor_clicked = false,
+                    _ => (),
+                };
+            }
+            WindowEvent::CursorMoved { device_id: _, position } => {
+                state.cursor_pos = [position.x as f32 / state.size.width as f32, position.y as f32 / state.size.height as f32];
             }
             _ => (),
         }

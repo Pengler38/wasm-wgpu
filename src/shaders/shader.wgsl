@@ -1,3 +1,8 @@
+// VERTEX_FRAGMENT visibility
+@group(2) @binding(1)
+var<uniform> time: f32;
+
+
 // Vertex shader
 struct CameraUniform {
   view_proj: mat4x4<f32>,
@@ -44,6 +49,7 @@ fn vs_main(
     + vec4<f32>(displacement.xyz, 0.0);
   return out;
 }
+
 
 // Fragment shader
 @group(0) @binding(0)
