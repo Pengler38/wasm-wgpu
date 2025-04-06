@@ -121,29 +121,34 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.0, 1.0,
 );
 
-struct State {
-    start_time: web_time::Instant,
-    time_buffer: wgpu::Buffer,
-    cursor_clicked: bool,
-    cursor_pos: [f32; 2],
-
-    camera: Camera,
-    camera_uniform: CameraUniform,
-
-    displacement: [f32; 4],
-    displacement_buffer: wgpu::Buffer,
-
-    //wgpu oriented portion of state
-    camera_buffer: wgpu::Buffer,
-    window: Arc<Window>,
+struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    size: winit::dpi::PhysicalSize<u32>,
     surface: wgpu::Surface<'static>,
     surface_format: wgpu::TextureFormat,
     render_pipeline: wgpu::RenderPipeline,
     models: [Model; 26],
     universal_bind_groups: Vec<wgpu::BindGroup>,
+}
+
+struct State {
+    window: Arc<Window>,
+    size: winit::dpi::PhysicalSize<u32>,
+    gpu: Gpu,
+
+    start_time: web_time::Instant,
+    time_buffer: wgpu::Buffer,
+
+    cursor_clicked: bool,
+    cursor_pos: [f32; 2],
+    cursor_on_window: bool,
+
+    camera: Camera,
+    camera_uniform: CameraUniform,
+    camera_buffer: wgpu::Buffer,
+
+    displacement: [f32; 4],
+    displacement_buffer: wgpu::Buffer,
 }
 
 impl State {
@@ -394,20 +399,23 @@ impl State {
             time_buffer,
             cursor_clicked: false,
             cursor_pos: [0.5, 1.0],
+            cursor_on_window: false,
             camera,
             camera_uniform,
             camera_buffer,
             displacement,
             displacement_buffer,
             window,
-            device,
-            queue,
             size,
-            surface,
-            surface_format,
-            render_pipeline,
-            models,
-            universal_bind_groups,
+            gpu: Gpu {
+                device,
+                queue,
+                surface,
+                surface_format,
+                render_pipeline,
+                models,
+                universal_bind_groups,
+            },
         };
 
         //Configure surface for the first time
@@ -428,22 +436,22 @@ impl State {
 
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: self.surface_format,
+            format: self.gpu.surface_format,
             //Request compatibility with the sRGB-format texture view we're going to create later
-            view_formats: vec![self.surface_format.add_srgb_suffix()],
+            view_formats: vec![self.gpu.surface_format.add_srgb_suffix()],
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             width: self.size.width,
             height: self.size.height,
             desired_maximum_frame_latency: 2,
             present_mode: wgpu::PresentMode::AutoVsync,
         };
-        self.surface.configure(&self.device, &surface_config);
+        self.gpu.surface.configure(&self.gpu.device, &surface_config);
     }
 
     fn reconfigure_camera(&mut self) {
         self.camera = Camera::new_default( self.size.width as f32 / self.size.height as f32);
         self.camera_uniform.update_view_proj(&self.camera);
-        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+        self.gpu.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -459,12 +467,12 @@ impl State {
         self.displacement = [2.0 * (self.cursor_pos[0] - 0.5), -2.0 * (self.cursor_pos[1] - 0.5), 0.0, 0.2];
 
         // Update uniforms
-        self.queue.write_buffer(&self.displacement_buffer, 0, bytemuck::cast_slice(&self.displacement));
-        self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[seconds]));
+        self.gpu.queue.write_buffer(&self.displacement_buffer, 0, bytemuck::cast_slice(&self.displacement));
+        self.gpu.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[seconds]));
 
         //Create texture view
         let output = self
-            .surface
+            .gpu.surface
             .get_current_texture()
             .expect("Failed to acquire next swapchain texture");
         let output_texture_view = output
@@ -472,12 +480,12 @@ impl State {
             .create_view(&wgpu::TextureViewDescriptor {
                 //Without add_srgb_suffix the image we will be working with might not be "gamma
                 //correct".
-                format: Some(self.surface_format.add_srgb_suffix()),
+                format: Some(self.gpu.surface_format.add_srgb_suffix()),
                 ..Default::default()
             });
 
         //Renders the content
-        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         //Create the render pass which will clear the screen
         let mut renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
@@ -495,13 +503,13 @@ impl State {
         });
 
         // Draw commands
-        renderpass.set_pipeline(&self.render_pipeline);
-        for (i, bind_group) in self.universal_bind_groups.iter().enumerate() {
+        renderpass.set_pipeline(&self.gpu.render_pipeline);
+        for (i, bind_group) in self.gpu.universal_bind_groups.iter().enumerate() {
             renderpass.set_bind_group(i as u32, bind_group, &[]);
         }
 
         // Draw each letter
-        for letter in &self.models {
+        for letter in &self.gpu.models {
             if letter.instances.len() > 0 {
                 renderpass.set_vertex_buffer(0, letter.vertex_data.vertex_buffer.slice(..));
                 renderpass.set_vertex_buffer(1, letter.instance_buffer.slice(..));
@@ -515,7 +523,7 @@ impl State {
         drop(renderpass);
 
         //Submit the command in the queue to execute
-        self.queue.submit([encoder.finish()]);
+        self.gpu.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         output.present();
     }
@@ -575,6 +583,12 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { device_id: _, position } => {
                 state.cursor_pos = [position.x as f32 / state.size.width as f32, position.y as f32 / state.size.height as f32];
+            }
+            WindowEvent::CursorEntered { device_id: _ } => {
+                state.cursor_on_window = true;
+            }
+            WindowEvent::CursorLeft { device_id: _ } => {
+                state.cursor_on_window = false;
             }
             _ => (),
         }
