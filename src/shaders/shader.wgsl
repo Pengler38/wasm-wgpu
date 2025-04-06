@@ -29,6 +29,7 @@ struct VertexInput {
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
   @location(0) tex_coords: vec2<f32>,
+  @location(1) @interpolate(perspective) screen_pos: vec2<f32>, // web cannot @interpolate(linear)
 };
 
 @vertex 
@@ -56,6 +57,7 @@ fn vs_main(
   let diff = screen_position.xy - screen_displacement;
   let displacement = displacement_strength * (-1.0 * pow(2.0, -1.0 * length(diff)) + 1.0) * normalize(diff);
   out.clip_position = vec4<f32>(screen_position.xy + displacement.xy * screen_position.w, screen_position.zw);
+  out.screen_pos = vec2<f32>(0.5, 0.5) * (out.clip_position.xy / out.clip_position.w + vec2<f32>(1.0, 1.0));
   return out;
 }
 
