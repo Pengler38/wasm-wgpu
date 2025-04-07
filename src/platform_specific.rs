@@ -64,8 +64,8 @@ pub fn window_attributes() -> winit::window::WindowAttributes {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let size = winit::dpi::PhysicalSize {
-            width: 640,
-            height: 480,
+            width: 1280,
+            height: 320,
         };
         winit::window::WindowAttributes::default().with_title("Test").with_inner_size(size)
     }

@@ -651,28 +651,34 @@ fn create_models(device: &wgpu::Device, text: &str, alphabet_models: &[letters::
 // Currently does only one line and only handles lowercase letters
 // Instances will be from x=[-5, 5], at z=???. Each letter will be scaled down in height to match the width
 fn get_letter_instances(text: &str) -> [Vec<Instance>; 26] {
-    const LEFT_BOUND: f32 = -5.0;
-    const RIGHT_BOUND: f32 = 5.0;
+    const LEFT_BOUND: f32 = -10.0;
+    const RIGHT_BOUND: f32 = 10.0;
     let length = f32::abs(LEFT_BOUND) + f32::abs(RIGHT_BOUND);
     let mut letter_instances: [Vec<Instance>; 26] = std::array::from_fn(|_| Vec::new());
-    let num_characters = text.len();
 
-    for (i, char) in text.chars().enumerate() {
-        let width_per_character = length / num_characters as f32;
+    let mut y = 2.0;
+
+    for s in text.lines() {
+        let num_chars = s.len();
+        let width_per_character = length / num_chars as f32;
         let scale = width_per_character * 0.75;
-        let x = LEFT_BOUND
-            + (i as f32 + 0.5) * width_per_character;
-        let position = cgmath::Vector3 { x, y: -3.0, z: WORLD_ZPLANE };
-        let rotation = if position.is_zero() {
-            cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
-        } else {
-            cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(0.0))
-        };
 
-        let idx = letter_index(char);
-        letter_instances[idx].push( Instance {
-            position, rotation, scale
-        });
+        y -= width_per_character;
+
+        for (i, c) in s.chars().enumerate() {
+            let x = LEFT_BOUND
+                + (i as f32 + 0.5) * width_per_character;
+            let position = cgmath::Vector3 { x, y, z: WORLD_ZPLANE };
+            let rotation = if position.is_zero() {
+                cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+            } else {
+                cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(0.0))
+            };
+            let idx = letter_index(c);
+            letter_instances[idx].push( Instance {
+                position, rotation, scale
+            });
+        }
     }
 
     letter_instances
@@ -695,7 +701,7 @@ fn main() -> Result<(), winit::error::EventLoopError>{
     event_loop.set_control_flow(ControlFlow::Wait); // This seems to fix a winit-related performance problem I have on the web???
 
     let alphabet_models = letters::create_alphabet_models();
-    let text = "hello".to_string();
+    let text = "hello\nhello".to_string();
     let letter_texture = letters::create_letter_texture();
 
     #[allow(unused_mut)] // mut used in desktop and not in wasm32
