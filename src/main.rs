@@ -147,7 +147,8 @@ struct State {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
 
-    displacement: [f32; 4],
+    displacement_focus: [f32; 2],
+    displacement_strength: f32,
     displacement_buffer: wgpu::Buffer,
 }
 
@@ -279,11 +280,11 @@ impl State {
         let models = create_models(&device, &init_content.text, &init_content.alphabet_models);
 
         // Displacement buffer handling
-        let displacement: [f32; 4] = [0.0; 4];
+        let initial_displacement = [0.5, 0.5, 0.0, 0.0];
         let displacement_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("displacement_buffer"),
-                contents: bytemuck::cast_slice(&displacement),
+                contents: bytemuck::cast_slice(&initial_displacement),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             }
         );
@@ -403,7 +404,8 @@ impl State {
             camera,
             camera_uniform,
             camera_buffer,
-            displacement,
+            displacement_focus: [initial_displacement[0], initial_displacement[1]],
+            displacement_strength: initial_displacement[3],
             displacement_buffer,
             window,
             size,
@@ -463,11 +465,27 @@ impl State {
 
     fn render(&mut self) {
         // Update displacement
+        // Displacement lags behind the cursor position and grows as the cursor stays in one spot.
         let seconds = self.start_time.elapsed().as_secs_f32();
-        self.displacement = [2.0 * (self.cursor_pos[0] - 0.5), -2.0 * (self.cursor_pos[1] - 0.5), 0.0, 0.2];
+
+        let diff = [self.cursor_pos[0] - self.displacement_focus[0], self.cursor_pos[1] - self.displacement_focus[1]];
+        self.displacement_focus = [self.displacement_focus[0] + 0.05 * diff[0], self.displacement_focus[1] + 0.05 * diff[1]];
+
+        self.displacement_strength = if self.cursor_on_window == true {
+            f32::clamp(
+                self.displacement_strength * 1.01 + 0.001,
+                0.0,
+                0.2 + (0.03 * (f32::sin(seconds) + 1.0))
+            )
+        } else {
+            self.displacement_strength * 0.99
+        };
+
+        // Correct displacement to screen-space coordinates
+        let displacement = [2.0 * (self.displacement_focus[0] - 0.5), -2.0 * (self.displacement_focus[1] - 0.5), 0.0, self.displacement_strength];
 
         // Update uniforms
-        self.gpu.queue.write_buffer(&self.displacement_buffer, 0, bytemuck::cast_slice(&self.displacement));
+        self.gpu.queue.write_buffer(&self.displacement_buffer, 0, bytemuck::cast_slice(&displacement));
         self.gpu.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[seconds]));
 
         //Create texture view
