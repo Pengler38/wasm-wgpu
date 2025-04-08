@@ -179,6 +179,11 @@ fn mirror_x(m: Model) -> Model {
 fn mirror_y(m: Model) -> Model {
     m.flip().vert_pos_op(|arr| [arr[0], ((arr[1] - 0.5) * -1.0) + 0.5, arr[2]])
 }
+
+// mirror over '/'
+fn mirror_forward_slash(m: Model) -> Model {
+    m.flip().vert_pos_op(|arr| [arr[1] - 0.5, arr[0] + 0.5, arr[2]])
+}
 //
 //fn mirror_z(self) -> Self {
 //    self.flip().mult(1.0, 1.0, -1.0)
@@ -257,21 +262,21 @@ pub fn create_alphabet_models() -> Vec<Model> {
     let i = Model::new_2d(&[], &[]);
     let j = Model::new_2d(&[], &[]);
     let k = Model::new_2d(&[], &[]);
-    let l = Model::rect_2d( // Horizontal part of L
-        [
-            (-0.2, 0.0),
+    let l = Model::tristrip_2d( // The horizontal L portion
+        &[
             (0.5, 0.0),
             (0.5, 0.2),
-            (-0.2, 0.2),
-        ]
-    ).append_rect_2d( // Vertical part of L
-        [
+            (0.25, 0.0),
+            (0.25, 0.2),
+            (0.0, 0.0),
+            (0.0, 0.2),
+            (-0.25, 0.0),
+            (-0.25, 0.2),
+            (-0.3, 0.0),
+            (-0.3, 0.2),
             (-0.5, 0.0),
-            (-0.2, 0.0),
-            (-0.2, 1.0),
-            (-0.5, 1.0),
         ]
-    );
+    ).append_apply(mirror_forward_slash);
     // m will be done at a later line
     let n = Model::new_2d(&[], &[]);
     let o = Model::rect_2d( // The diagonal part of the O

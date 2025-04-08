@@ -1,6 +1,8 @@
 // VERTEX_FRAGMENT visibility
 @group(2) @binding(1)
 var<uniform> time: f32;
+@group(2) @binding(2)
+var<uniform> screen_size: vec4<f32>; // Only vec2 is needed, but for web it must be padded to 16 bytes
 
 
 // Vertex shader
@@ -51,7 +53,7 @@ fn vs_main(
   // Note: the w position of screen_position is not 1.0 due to the camera projection. Any offsets need to take that divisor into account
   let screen_position = camera.view_proj * world_position;
 
-  let displacement_strength = displacement_target.w;
+  let displacement_strength = displacement_target.w * vec2<f32>(screen_size.y / screen_size.x, 1.0);
   // The screen space displacement
   let screen_displacement = screen_position.w * displacement_target.xy;
   let diff = screen_position.xy - screen_displacement;

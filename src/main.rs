@@ -138,6 +138,7 @@ struct State {
 
     start_time: web_time::Instant,
     time_buffer: wgpu::Buffer,
+    size_buffer: wgpu::Buffer,
 
     cursor_clicked: bool,
     cursor_pos: [f32; 2],
@@ -295,6 +296,13 @@ impl State {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             }
         );
+        let size_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("size_buffer"),
+                contents: bytemuck::cast_slice(&[size.width as f32, size.height as f32, 0.0, 0.0]), // The last 2 0's are to pad up to 16 bytes
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
         let misc_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -317,6 +325,16 @@ impl State {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: Some("displacement_bind_group_layout"),
         });
@@ -330,6 +348,10 @@ impl State {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: time_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: size_buffer.as_entire_binding(),
                 },
             ],
             label: Some("displacement_bind_group"),
@@ -401,6 +423,7 @@ impl State {
             cursor_clicked: false,
             cursor_pos: [0.5, 1.0],
             cursor_on_window: false,
+            size_buffer,
             camera,
             camera_uniform,
             camera_buffer,
@@ -461,6 +484,9 @@ impl State {
         //Reconfigure the surface
         self.configure_surface();
         self.reconfigure_camera();
+        // Update the size uniform
+        // The last 2 0's are to pad up to 16 bytes
+        self.gpu.queue.write_buffer(&self.size_buffer, 0, bytemuck::cast_slice(&[self.size.width as f32, self.size.height as f32, 0.0, 0.0]));
     }
 
     fn render(&mut self) {
@@ -473,12 +499,12 @@ impl State {
 
         self.displacement_strength = if self.cursor_on_window == true {
             f32::clamp(
-                self.displacement_strength * 1.01 + 0.001,
+                self.displacement_strength * 1.02 + 0.002,
                 0.0,
-                0.2 + (0.03 * (f32::sin(seconds) + 1.0))
+                0.4 + (0.06 * (f32::sin(seconds) + 1.0))
             )
         } else {
-            self.displacement_strength * 0.99
+            self.displacement_strength * 0.985
         };
 
         // Correct displacement to screen-space coordinates
