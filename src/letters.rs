@@ -101,6 +101,11 @@ impl Model {
         )
     }
 
+    fn _subdivided_rect(subdivisions: u32, vs: [(f32, f32); 4]) -> Self {
+        let _ = (subdivisions, vs);
+        todo!()
+    }
+
     fn append_rect_2d(self, vs: [(f32, f32); 4]) -> Self {
         self.append(Self::rect_2d(vs))
     }
@@ -220,44 +225,70 @@ pub fn create_alphabet_models() -> Vec<Model> {
             d.clone()
             .vert_pos_op(|v| [v[0], v[1] * 0.5, v[2]])
         );
-    let e = Model::rect_2d( // Top and bottom flanges of E
-        [
-            (-0.2, 0.0),
+    let e = Model::tristrip_2d( // The horizontal E parts
+        &[
             (0.5, 0.0),
             (0.5, 0.2),
-            (-0.2, 0.2),
+            (0.25, 0.0),
+            (0.25, 0.2),
+            (0.0, 0.0),
+            (0.0, 0.2),
+            (-0.25, 0.0),
+            (-0.25, 0.2),
+            (-0.3, 0.0),
+            (-0.3, 0.2),
         ]
-    ).append_apply(mirror_y).append_rect_2d( // Vertical part of E
-        [
-            (-0.5, 0.0),
-            (-0.2, 0.0),
-            (-0.2, 1.0),
-            (-0.5, 1.0),
-        ]
-    ).append_rect_2d( // Middle flange of E
-        [
-            (-0.2, 0.4),
+    ).append_apply(mirror_y).append( // The middle horizontal E part
+        Model::tristrip_2d(&[
             (0.5, 0.4),
             (0.5, 0.6),
-            (-0.2, 0.6),
-        ]
+            (0.25, 0.4),
+            (0.25, 0.6),
+            (0.0, 0.4),
+            (0.0, 0.6),
+            (-0.3, 0.4),
+            (-0.3, 0.6),
+        ])
+    ).append( // The Vertical E part
+        Model::tristrip_2d(&[
+            (-0.5, 0.0),
+            (-0.3, 0.0),
+            (-0.5, 0.2),
+            (-0.3, 0.2),
+            (-0.5, 0.4),
+            (-0.3, 0.4),
+            (-0.5, 0.6),
+            (-0.3, 0.6),
+            (-0.5, 0.8),
+            (-0.3, 0.8),
+            (-0.5, 1.0),
+            (-0.3, 1.0),
+        ])
     );
     let f = Model::new_2d(&[], &[]); //F shares parts with E
     let g = Model::new_2d(&[], &[]);
-    let h = Model::rect_2d( // Vertical part of H
-        [
-            (0.5, 0.0),
-            (0.5, 1.0),
-            (0.2, 1.0),
+    let h = Model::tristrip_2d( // Vertical part of H
+        &[
             (0.2, 0.0),
+            (0.5, 0.0),
+            (0.2, 0.2),
+            (0.5, 0.2),
+            (0.2, 0.4),
+            (0.5, 0.4),
+            (0.2, 0.6),
+            (0.5, 0.6),
+            (0.2, 0.8),
+            (0.5, 0.8),
+            (0.2, 1.0),
+            (0.5, 1.0),
         ]
-    ).append_apply(mirror_x).append_rect_2d( // Horizontal part of H
-        [
+    ).append_apply(mirror_x).append( // Horizontal part of H
+        Model::tristrip_2d(&[
             (-0.4, 0.4),
             (0.4, 0.4),
-            (0.4, 0.6),
             (-0.4, 0.6),
-        ]
+            (0.4, 0.6),
+        ])
     );
     let i = Model::new_2d(&[], &[]);
     let j = Model::new_2d(&[], &[]);
@@ -279,20 +310,24 @@ pub fn create_alphabet_models() -> Vec<Model> {
     ).append_apply(mirror_forward_slash);
     // m will be done at a later line
     let n = Model::new_2d(&[], &[]);
-    let o = Model::rect_2d( // The diagonal part of the O
-        [
-            (0.25,0.0),
-            (0.5,0.25),
-            (0.3,0.35),
+    let o = Model::tristrip_2d( // The diagonal part of the O
+        &[
             (0.15,0.2),
-        ]
-    ).append_apply(mirror_y).append_rect_2d( // The vertical part of the O
-        [
+            (0.25,0.0),
+            (0.25, 0.25),
+            (0.4, 0.10),
             (0.3,0.35),
             (0.5,0.25),
-            (0.5,0.75),
-            (0.3,0.65),
         ]
+    ).append_apply(mirror_y).append( // The vertical part of the O
+        Model::tristrip_2d(&[
+            (0.3,0.35),
+            (0.5,0.25),
+            (0.3,0.5),
+            (0.5,0.5),
+            (0.3,0.65),
+            (0.5,0.75),
+        ])
     ).append_apply(mirror_x).append(
         Model::rect_2d( // The horizontal part of the O
             [

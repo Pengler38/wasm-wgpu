@@ -15,6 +15,7 @@ impl RgbaTexture {
 
 
 pub struct GpuTexture {
+    #[allow(dead_code)]
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler
