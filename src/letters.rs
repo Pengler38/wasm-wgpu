@@ -344,9 +344,28 @@ pub fn create_alphabet_models() -> Vec<Model> {
     let s = Model::new_2d(&[], &[]);
     let t = Model::new_2d(&[], &[]);
     let u = Model::new_2d(&[], &[]);
-    let w = v.clone()
-        .vert_pos_op(|v| [(v[0] * 0.6) + 0.25, v[1], v[2]] ) // Add 0.5 to the x dimension of each vert
-        .append_apply(mirror_x);
+    let w = Model::tristrip_2d(
+        &[
+            (0.0, 1.0),
+            (0.1, 1.0),
+            (0.0, 0.65),
+            (0.15, 0.7),
+            (0.05, 0.3),
+            (0.20, 0.4),
+            (0.1, 0.0),
+            (0.20, 0.0),
+        ]
+    ).append(
+        Model::tristrip_2d(&[
+            (0.20, 0.0),
+            (0.20, 0.4),
+            (0.3, 0.0),
+            (0.25, 0.7),
+            (0.4, 0.5),
+            (0.3, 1.0),
+            (0.5, 1.0),
+        ])
+    ).flip().append_apply(mirror_x);
     let x = Model::new_2d(&[], &[]);
     let y = Model::new_2d(&[], &[]);
     let z = Model::new_2d(&[], &[]);
