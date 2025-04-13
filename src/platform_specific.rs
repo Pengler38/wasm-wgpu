@@ -1,3 +1,8 @@
+pub const SIZE: winit::dpi::PhysicalSize::<u32> = winit::dpi::PhysicalSize::<u32> {
+    width: 1280,
+    height: 320,
+};
+
 #[allow(dead_code)]
 pub fn print(string: &str) {
     #[cfg(target_arch = "wasm32")]
@@ -63,10 +68,6 @@ pub fn window_attributes() -> winit::window::WindowAttributes {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let size = winit::dpi::PhysicalSize {
-            width: 1280,
-            height: 320,
-        };
-        winit::window::WindowAttributes::default().with_title("Test").with_inner_size(size)
+        winit::window::WindowAttributes::default().with_title("Test").with_inner_size(SIZE)
     }
 }

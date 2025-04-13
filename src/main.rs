@@ -134,6 +134,7 @@ struct Gpu {
 struct State {
     window: Arc<Window>,
     size: winit::dpi::PhysicalSize<u32>,
+    screen_size: winit::dpi::PhysicalSize<u32>,
     gpu: Gpu,
 
     start_time: web_time::Instant,
@@ -432,6 +433,7 @@ impl State {
             displacement_buffer,
             window,
             size,
+            screen_size: size,
             gpu: Gpu {
                 device,
                 queue,
@@ -481,6 +483,16 @@ impl State {
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.size = new_size;
+        self.screen_size = new_size;
+
+        // Problem: inner_window size is in css pixels
+        // PhysicalSize is in actual pixels
+        // Reconfigure with the inner_window size makes the canvas progressively smaller or bigger
+        // Solution, overwrite size with a constant
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.size = platform_specific::SIZE;
+        }
         //Reconfigure the surface
         self.configure_surface();
         self.reconfigure_camera();
@@ -626,7 +638,7 @@ impl ApplicationHandler for App {
                 };
             }
             WindowEvent::CursorMoved { device_id: _, position } => {
-                state.cursor_pos = [position.x as f32 / state.size.width as f32, position.y as f32 / state.size.height as f32];
+                state.cursor_pos = [position.x as f32 / state.screen_size.width as f32, position.y as f32 / state.screen_size.height as f32];
             }
             WindowEvent::CursorEntered { device_id: _ } => {
                 state.cursor_on_window = true;
