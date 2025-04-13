@@ -144,6 +144,7 @@ struct State {
     cursor_clicked: bool,
     cursor_pos: [f32; 2],
     cursor_on_window: bool,
+    touch_id: u64,
 
     camera: Camera,
     camera_uniform: CameraUniform,
@@ -424,6 +425,7 @@ impl State {
             cursor_clicked: false,
             cursor_pos: [0.5, 1.0],
             cursor_on_window: false,
+            touch_id: 0,
             size_buffer,
             camera,
             camera_uniform,
@@ -479,6 +481,10 @@ impl State {
         self.camera = Camera::new_default( self.size.width as f32 / self.size.height as f32);
         self.camera_uniform.update_view_proj(&self.camera);
         self.gpu.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+    }
+
+    fn update_cursor(&mut self, position: winit::dpi::PhysicalPosition<f64>) {
+        self.cursor_pos = [position.x as f32 / self.screen_size.width as f32, position.y as f32 / self.screen_size.height as f32];
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -638,13 +644,32 @@ impl ApplicationHandler for App {
                 };
             }
             WindowEvent::CursorMoved { device_id: _, position } => {
-                state.cursor_pos = [position.x as f32 / state.screen_size.width as f32, position.y as f32 / state.screen_size.height as f32];
+                state.update_cursor(position);
             }
             WindowEvent::CursorEntered { device_id: _ } => {
                 state.cursor_on_window = true;
             }
             WindowEvent::CursorLeft { device_id: _ } => {
                 state.cursor_on_window = false;
+            }
+            WindowEvent::Touch( t ) => {
+                use winit::event::TouchPhase;
+                match t.phase {
+                    TouchPhase::Started if !state.cursor_on_window => {
+                        state.cursor_on_window = true;
+                        state.cursor_clicked = true;
+                        state.touch_id = t.id;
+                        state.update_cursor(t.location);
+                    },
+                    TouchPhase::Moved if t.id == state.touch_id => {
+                        state.update_cursor(t.location);
+                    },
+                    TouchPhase::Ended | TouchPhase::Cancelled if t.id == state.touch_id => {
+                        state.cursor_on_window = false;
+                        state.cursor_clicked = false;
+                    },
+                    _ => (),
+                }
             }
             _ => (),
         }
