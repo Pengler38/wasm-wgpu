@@ -14,7 +14,7 @@ mod platform_specific;
 mod letters;
 mod texture;
 
-const WORLD_ZPLANE: f32 = -5.0;
+const WORLD_ZPLANE: f32 = 0.0;
 
 #[derive(Debug)]
 struct VertexData {
@@ -77,8 +77,10 @@ struct Camera {
 impl Camera {
     fn new_default(aspect_ratio: f32) -> Self {
         Camera {
-            eye: (0.0, 1.0, 2.0).into(),
-            target: (0.0, 0.0, 0.0).into(),
+            eye: (0.0, 0.0, 7.0).into(),
+            // The y of the target depends on how many lines of text you're displaying.
+            // For now, -2.0 works well for 2 lines of text
+            target: (0.0, -2.0, 0.0).into(),
             up: cgmath::Vector3::unit_y(),
             aspect: aspect_ratio,
             fovy: 45.0,
