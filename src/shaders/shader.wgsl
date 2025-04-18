@@ -40,6 +40,7 @@ fn vs_main(
   instance: InstanceInput,
   @builtin(vertex_index) in_vertex_index: u32,
 ) -> VertexOutput {
+  let t = time;
   let model_matrix = mat4x4<f32>(
     instance.model_matrix_0,
     instance.model_matrix_1,
@@ -52,9 +53,24 @@ fn vs_main(
 
   let displacement_strength = displacement_target.w;
   let diff = initial_world_position.xy - displacement_target.xy;
-  let displacement = displacement_strength * (-1.0 * pow(2.0, -1.0 * length(diff)) + 1.0) * normalize(diff);
+  let xy_displacement = displacement_strength * 3.0 * (-1.0 * pow(2.0, -1.0 * length(diff)) + 1.0) * normalize(diff);
+  let z_displacement = displacement_strength * 3.0 / (1.0 + exp(1.5 * length(diff) - 4.0));
+  // z_displacement is a function that only outputs from 0 to 1, so invert that by subtracting from 1.
+  let inverse_z_displacement = 1.0 - z_displacement;
 
-  let world_position = vec4<f32>(initial_world_position.xy + 2.0 * displacement, initial_world_position.zw);
+
+  let displacement = vec4<f32>(xy_displacement, z_displacement, 0.0);
+
+  // Transform the world position with sin/cos and time
+  // Do this at an inverse rate to the z_displacement
+  let wave_transform = vec4<f32>(
+    0.3 * sin(t / 2.0 + initial_world_position.y / 2.0),
+    0.3 * cos(t / 2.0 + initial_world_position.x / 2.0),
+    0.2 * sin(t + initial_world_position.x + initial_world_position.y),
+    0,
+  ) * inverse_z_displacement;
+
+  let world_position = initial_world_position + displacement + wave_transform;
 
   out.clip_position = camera.view_proj * world_position;
   out.screen_pos = vec2<f32>(0.5, 0.5) * (out.clip_position.xy / out.clip_position.w + vec2<f32>(1.0, 1.0));
