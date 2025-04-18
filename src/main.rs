@@ -94,6 +94,27 @@ impl Camera {
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
         OPENGL_TO_WGPU_MATRIX * proj * view
     }
+
+    fn create_matrices(&self) -> (CameraUniform, cgmath::Matrix4<f32>) {
+        let view_proj = self.build_view_projection_matrix();
+        (view_proj.into(), view_proj.invert().unwrap_or(ZERO_MATRIX))
+    }
+
+    fn find_3d_mouse_pos(
+        mouse_position: [f32; 2],
+        target_z_value: f32,
+        inverse_view_proj: cgmath::Matrix4<f32>
+    ) -> cgmath::Vector3<f32> {
+        // Invert the view to find the respective cursor positions at znear and zfar according to the inverse view proj
+        let near_clip = inverse_view_proj * cgmath::Vector4::new(mouse_position[0], mouse_position[1], 1.0, 1.0);
+        let near = near_clip.div_element_wise(near_clip.w).truncate();
+        let far_clip = inverse_view_proj * cgmath::Vector4::new(mouse_position[0], mouse_position[1], -1.0, 1.0);
+        let far = far_clip.div_element_wise(far_clip.w).truncate();
+        // Find where the ray between near and far intersect with the target z plane.
+        let ray = far - near;
+        let mult = (target_z_value - near.z) / (ray.z);
+        near + mult * ray
+    }
 }
 
 #[repr(C)]
@@ -103,15 +124,12 @@ struct CameraUniform {
 }
 
 impl CameraUniform {
-    fn new() -> Self {
-        use cgmath::SquareMatrix;
-        Self {
-            view_proj: cgmath::Matrix4::identity().into(),
-        }
-    }
+    // This page intentionally left blank
+}
 
-    fn update_view_proj(&mut self, camera: &Camera) {
-        self.view_proj = camera.build_view_projection_matrix().into();
+impl From<cgmath::Matrix4<f32>> for CameraUniform {
+    fn from(m: cgmath::Matrix4<f32>) -> Self {
+        Self { view_proj: m.into() }
     }
 }
 
@@ -121,6 +139,14 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 0.5, 0.5,
     0.0, 0.0, 0.0, 1.0,
+);
+
+#[rustfmt::skip]
+const ZERO_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+    0.0, 0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0, 0.0,
 );
 
 struct Gpu {
@@ -150,6 +176,7 @@ struct State {
 
     camera: Camera,
     camera_uniform: CameraUniform,
+    inverse_camera_mat: cgmath::Matrix4<f32>,
     camera_buffer: wgpu::Buffer,
 
     displacement_focus: [f32; 2],
@@ -241,9 +268,7 @@ impl State {
 
         // Camera initialization
         let camera = Camera::new_default(size.width as f32 / size.height as f32);
-
-        let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
+        let (camera_uniform, inverse_camera_mat) = camera.create_matrices();
 
         let camera_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
@@ -431,6 +456,7 @@ impl State {
             size_buffer,
             camera,
             camera_uniform,
+            inverse_camera_mat,
             camera_buffer,
             displacement_focus: [initial_displacement[0], initial_displacement[1]],
             displacement_strength: initial_displacement[3],
@@ -481,12 +507,15 @@ impl State {
 
     fn reconfigure_camera(&mut self) {
         self.camera = Camera::new_default( self.size.width as f32 / self.size.height as f32);
-        self.camera_uniform.update_view_proj(&self.camera);
+        (self.camera_uniform, self.inverse_camera_mat) = self.camera.create_matrices();
         self.gpu.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
     }
 
     fn update_cursor(&mut self, position: winit::dpi::PhysicalPosition<f64>) {
-        self.cursor_pos = [position.x as f32 / self.screen_size.width as f32, position.y as f32 / self.screen_size.height as f32];
+        self.cursor_pos = [
+            2.0 * (position.x as f32 / self.screen_size.width as f32 - 0.5),
+            -2.0 * (position.y as f32 / self.screen_size.height as f32 - 0.5),
+        ];
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -528,7 +557,8 @@ impl State {
         };
 
         // Correct displacement to screen-space coordinates
-        let displacement = [2.0 * (self.displacement_focus[0] - 0.5), -2.0 * (self.displacement_focus[1] - 0.5), 0.0, self.displacement_strength];
+        let cursor_position_3d = Camera::find_3d_mouse_pos(self.displacement_focus, WORLD_ZPLANE, self.inverse_camera_mat);
+        let displacement = [cursor_position_3d[0], cursor_position_3d[1], cursor_position_3d[2], self.displacement_strength];
 
         // Update uniforms
         self.gpu.queue.write_buffer(&self.displacement_buffer, 0, bytemuck::cast_slice(&displacement));

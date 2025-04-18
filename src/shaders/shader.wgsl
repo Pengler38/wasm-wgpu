@@ -48,17 +48,15 @@ fn vs_main(
   );
   var out: VertexOutput;
   out.tex_coords = model.tex_coords;
-  let world_position = model_matrix * vec4<f32>(model.position, 1.0);
+  let initial_world_position = model_matrix * vec4<f32>(model.position, 1.0);
 
-  // Note: the w position of screen_position is not 1.0 due to the camera projection. Any offsets need to take that divisor into account
-  let screen_position = camera.view_proj * world_position;
-
-  let displacement_strength = displacement_target.w * vec2<f32>(screen_size.y / screen_size.x, 1.0);
-  // The screen space displacement
-  let screen_displacement = screen_position.w * displacement_target.xy;
-  let diff = screen_position.xy - screen_displacement;
+  let displacement_strength = displacement_target.w;
+  let diff = initial_world_position.xy - displacement_target.xy;
   let displacement = displacement_strength * (-1.0 * pow(2.0, -1.0 * length(diff)) + 1.0) * normalize(diff);
-  out.clip_position = vec4<f32>(screen_position.xy + displacement.xy * screen_position.w, screen_position.zw);
+
+  let world_position = vec4<f32>(initial_world_position.xy + 2.0 * displacement, initial_world_position.zw);
+
+  out.clip_position = camera.view_proj * world_position;
   out.screen_pos = vec2<f32>(0.5, 0.5) * (out.clip_position.xy / out.clip_position.w + vec2<f32>(1.0, 1.0));
   return out;
 }
