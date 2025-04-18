@@ -321,7 +321,7 @@ impl State {
         let time_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("time_buffer"),
-                contents: bytemuck::cast_slice(&[0.0 as f32]),
+                contents: bytemuck::cast_slice(&[0.0 as f32, 0.0 as f32, 0.0 as f32, 0.0 as f32]),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             }
         );

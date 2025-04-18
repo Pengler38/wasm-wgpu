@@ -1,6 +1,6 @@
 // VERTEX_FRAGMENT visibility
 @group(2) @binding(1)
-var<uniform> time: f32;
+var<uniform> time: vec4<f32>; // Only the first f32 is used, must be padded to 16 bytes for web
 @group(2) @binding(2)
 var<uniform> screen_size: vec4<f32>; // Only vec2 is needed, but for web it must be padded to 16 bytes
 
@@ -40,7 +40,7 @@ fn vs_main(
   instance: InstanceInput,
   @builtin(vertex_index) in_vertex_index: u32,
 ) -> VertexOutput {
-  let t = time;
+  let t = time[0];
   let model_matrix = mat4x4<f32>(
     instance.model_matrix_0,
     instance.model_matrix_1,
