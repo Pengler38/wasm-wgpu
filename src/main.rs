@@ -814,7 +814,7 @@ fn main() -> Result<(), winit::error::EventLoopError>{
     event_loop.set_control_flow(ControlFlow::Wait); // This seems to fix a winit-related performance problem I have on the web???
 
     let alphabet_models = letters::create_alphabet_models();
-    let text = "hello\nhello".to_string();
+    let text = "hello\nworld".to_string();
     let letter_texture = letters::create_letter_texture();
 
     #[allow(unused_mut)] // mut used in desktop and not in wasm32

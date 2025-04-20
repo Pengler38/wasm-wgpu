@@ -143,11 +143,11 @@ impl Model {
     }
 
     fn mult(self, x: f32, y: f32, z: f32) -> Model {
-        self.vert_pos_op( |arr| [x * arr[0], y * arr[1], z * arr[2]] )
+        self.vert_mod( |arr| [x * arr[0], y * arr[1], z * arr[2]] )
     }
 
     // uses function f on all the vert positions
-    fn vert_pos_op<F>(mut self, f: F) -> Self 
+    fn vert_mod<F>(mut self, f: F) -> Self 
     where F: Fn([f32;3]) -> [f32;3] {
         for vert in &mut self.verts {
             *vert = Vert{ position: f(vert.position), tex_coords: vert.tex_coords }
@@ -182,12 +182,16 @@ fn mirror_x(m: Model) -> Model {
 }
     
 fn mirror_y(m: Model) -> Model {
-    m.flip().vert_pos_op(|arr| [arr[0], ((arr[1] - 0.5) * -1.0) + 0.5, arr[2]])
+    m.flip().vert_mod(|arr| [arr[0], ((arr[1] - 0.5) * -1.0) + 0.5, arr[2]])
 }
 
 // mirror over '/'
 fn mirror_forward_slash(m: Model) -> Model {
-    m.flip().vert_pos_op(|arr| [arr[1] - 0.5, arr[0] + 0.5, arr[2]])
+    m.flip().vert_mod(|arr| [arr[1] - 0.5, arr[0] + 0.5, arr[2]])
+}
+// mirror over '\'
+fn mirror_back_slash(m: Model) -> Model {
+    m.flip().vert_mod(|arr| [0.5 - arr[1], 0.5 - arr[0], arr[2]])
 }
 //
 //fn mirror_z(self) -> Self {
@@ -195,6 +199,32 @@ fn mirror_forward_slash(m: Model) -> Model {
 //}
 
 pub fn create_alphabet_models() -> Vec<Model> {
+    // Helper models
+    let vertical_line = Model::tristrip_2d(&[
+        (-0.5, 0.0),
+        (-0.3, 0.0),
+        (-0.5, 0.2),
+        (-0.3, 0.2),
+        (-0.5, 0.4),
+        (-0.3, 0.4),
+        (-0.5, 0.6),
+        (-0.3, 0.6),
+        (-0.5, 0.8),
+        (-0.3, 0.8),
+        (-0.5, 1.0),
+        (-0.3, 1.0),
+    ]);
+    let vertical_line_thick = vertical_line.clone().vert_mod(|a| [(a[0] + 0.5) * 1.5 - 0.5, a[1], a[2]]);
+    // Arc with dimensions x=[0.15, 0.5], y=[0.0, 0.35]
+    let arc = Model::tristrip_2d(&[
+        (0.15,0.0),
+        (0.15,0.2),
+        (0.25,0.02),
+        (0.25, 0.25),
+        (0.4, 0.10),
+    ]).flip().append_apply(mirror_back_slash);
+
+    // Letter models
     let v = Model::rect_2d( // Diagonal part of V
         [
             (0.3, 0.9),
@@ -218,12 +248,19 @@ pub fn create_alphabet_models() -> Vec<Model> {
         ]
     );
     let c = Model::new_2d(&[], &[]);
-    let d = Model::new_2d(&[], &[]);
+    let d = vertical_line_thick.clone().append(arc.clone().vert_mod(
+        |a| [(a[0] - 0.15) / 0.35 * 0.6 - 0.2, a[1], a[2]]
+    ).append(Model::tristrip_2d(&[
+        (0.057142, 0.35),
+        (0.4, 0.35),
+        (0.1, 0.5),
+        (0.43, 0.5),
+    ])).append_apply(mirror_y));
     let b = d.clone() // B is just 2 D's
-        .vert_pos_op(|v| [v[0], (v[1] * 0.5) + 0.5, v[2]])
+        .vert_mod(|v| [v[0], (v[1] * 0.5) + 0.5, v[2]])
         .append(
             d.clone()
-            .vert_pos_op(|v| [v[0], v[1] * 0.5, v[2]])
+            .vert_mod(|v| [v[0], v[1] * 0.5, v[2]])
         );
     let e = Model::tristrip_2d( // The horizontal E parts
         &[
@@ -250,44 +287,19 @@ pub fn create_alphabet_models() -> Vec<Model> {
             (-0.3, 0.6),
         ])
     ).append( // The Vertical E part
-        Model::tristrip_2d(&[
-            (-0.5, 0.0),
-            (-0.3, 0.0),
-            (-0.5, 0.2),
-            (-0.3, 0.2),
-            (-0.5, 0.4),
-            (-0.3, 0.4),
-            (-0.5, 0.6),
-            (-0.3, 0.6),
-            (-0.5, 0.8),
-            (-0.3, 0.8),
-            (-0.5, 1.0),
-            (-0.3, 1.0),
-        ])
+        vertical_line.clone()
     );
     let f = Model::new_2d(&[], &[]); //F shares parts with E
     let g = Model::new_2d(&[], &[]);
-    let h = Model::tristrip_2d( // Vertical part of H
-        &[
-            (0.2, 0.0),
-            (0.5, 0.0),
-            (0.2, 0.2),
-            (0.5, 0.2),
-            (0.2, 0.4),
-            (0.5, 0.4),
-            (0.2, 0.6),
-            (0.5, 0.6),
-            (0.2, 0.8),
-            (0.5, 0.8),
-            (0.2, 1.0),
-            (0.5, 1.0),
-        ]
+    let h = vertical_line_thick.clone( // Vertical part of H
     ).append_apply(mirror_x).append( // Horizontal part of H
         Model::tristrip_2d(&[
-            (-0.4, 0.4),
-            (0.4, 0.4),
-            (-0.4, 0.6),
-            (0.4, 0.6),
+            (-0.2, 0.6),
+            (-0.2, 0.4),
+            (0.0, 0.6),
+            (0.0, 0.4),
+            (0.2, 0.6),
+            (0.2, 0.4),
         ])
     );
     let i = Model::new_2d(&[], &[]);
@@ -310,37 +322,59 @@ pub fn create_alphabet_models() -> Vec<Model> {
     ).append_apply(mirror_forward_slash);
     // m will be done at a later line
     let n = Model::new_2d(&[], &[]);
-    let o = Model::tristrip_2d( // The diagonal part of the O
-        &[
-            (0.15,0.2),
-            (0.25,0.0),
-            (0.25, 0.25),
-            (0.4, 0.10),
-            (0.3,0.35),
-            (0.5,0.25),
-        ]
+    let o = arc.clone( // The diagonal part of the O
     ).append_apply(mirror_y).append( // The vertical part of the O
         Model::tristrip_2d(&[
             (0.3,0.35),
-            (0.5,0.25),
+            (0.5,0.35),
             (0.3,0.5),
             (0.5,0.5),
             (0.3,0.65),
-            (0.5,0.75),
+            (0.5,0.65),
         ])
     ).append_apply(mirror_x).append(
-        Model::rect_2d( // The horizontal part of the O
-            [
-                (-0.25, 0.0),
-                (0.25, 0.0),
-                (0.15, 0.2),
+        Model::tristrip_2d( // The horizontal part of the O
+            &[
                 (-0.15,0.2),
+                (-0.15, 0.0),
+                (0.0, 0.2),
+                (0.0, 0.0),
+                (0.15, 0.2),
+                (0.15, 0.0),
             ]
         ).append_apply(mirror_y)
     );
-    let p = Model::new_2d(&[], &[]);
+    let p = arc.clone().vert_mod(
+        |a| [(a[0] - 0.15) / 0.35 * 0.6 - 0.2, a[1] + 0.15, a[2]]
+    ).append_apply(mirror_y).vert_mod(
+        |a| [a[0], a[1] + 0.15, a[2]]
+    ).append(Model::tristrip_2d(&[ // Modified copy of vertical_line_thick to match verts with the curve
+        (-0.5, 0.0),
+        (-0.2, 0.0),
+        (-0.5, 0.2),
+        (-0.2, 0.2),
+        (-0.5, 0.3),
+        (-0.2, 0.3),
+        (-0.5, 0.5),
+        (-0.2, 0.5),
+        (-0.5, 0.6),
+        (-0.2, 0.6),
+        (-0.5, 0.8),
+        (-0.2, 0.8),
+        (-0.5, 1.0),
+        (-0.2, 1.0),
+    ]));
     let q = Model::new_2d(&[], &[]);
-    let r = Model::new_2d(&[], &[]);
+    let r = p.clone().append(Model::tristrip_2d(&[
+        (-0.02857, 0.32),
+        (-0.2, 0.3),
+        (0.1, 0.25),
+        (-0.1, 0.25),
+        (0.25, 0.15),
+        (0.0, 0.15),
+        (0.4, 0.0),
+        (0.1, 0.0),
+    ]));
     let s = Model::new_2d(&[], &[]);
     let t = Model::new_2d(&[], &[]);
     let u = Model::new_2d(&[], &[]);
