@@ -117,7 +117,11 @@ impl Camera {
 
     fn create_matrices(&self) -> (CameraUniform, cgmath::Matrix4<f32>) {
         let view_proj = self.build_view_projection_matrix();
-        (view_proj.into(), view_proj.invert().unwrap_or(ZERO_MATRIX))
+        let uniform = CameraUniform {
+            view_pos: self.eye.to_homogeneous().into(),
+            view_proj: view_proj.into(),
+        };
+        (uniform, view_proj.invert().unwrap_or(ZERO_MATRIX))
     }
 
     fn find_3d_mouse_pos(
@@ -140,17 +144,12 @@ impl Camera {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct CameraUniform {
+    view_pos: [f32; 4],
     view_proj: [[f32; 4]; 4],
 }
 
 impl CameraUniform {
     // This page intentionally left blank
-}
-
-impl From<cgmath::Matrix4<f32>> for CameraUniform {
-    fn from(m: cgmath::Matrix4<f32>) -> Self {
-        Self { view_proj: m.into() }
-    }
 }
 
 #[rustfmt::skip]
@@ -305,7 +304,7 @@ impl State {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
