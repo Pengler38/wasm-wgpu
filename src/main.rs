@@ -64,6 +64,26 @@ impl InstanceRaw {
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct LightUniform {
+    position: [f32; 3],
+    _padding: u32, // Padding so struct+struct fields are 16 byte aligned for web
+    color: [f32; 3],
+    _padding2: u32,
+}
+
+impl LightUniform {
+    fn new(position: [f32; 3], color: [f32; 3]) -> Self {
+        LightUniform {
+            position,
+            _padding: 0,
+            color,
+            _padding2: 0,
+        }
+    }
+}
+
 struct Camera {
     eye: cgmath::Point3<f32>,
     target: cgmath::Point3<f32>,
@@ -178,6 +198,9 @@ struct State {
     camera_uniform: CameraUniform,
     inverse_camera_mat: cgmath::Matrix4<f32>,
     camera_buffer: wgpu::Buffer,
+
+    light_uniform: LightUniform,
+    light_buffer: wgpu::Buffer,
 
     displacement_focus: [f32; 2],
     displacement_strength: f32,
@@ -332,6 +355,14 @@ impl State {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             }
         );
+        let light_uniform = LightUniform::new([2.0, 2.0, 2.0], [1.0, 1.0, 1.0]);
+        let light_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("light_buffer"),
+                contents: bytemuck::cast_slice(&[light_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
         let misc_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -364,8 +395,18 @@ impl State {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
-            label: Some("displacement_bind_group_layout"),
+            label: Some("misc_bind_group_layout"),
         });
         let misc_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &misc_bind_group_layout,
@@ -382,8 +423,12 @@ impl State {
                     binding: 2,
                     resource: size_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: light_buffer.as_entire_binding(),
+                },
             ],
-            label: Some("displacement_bind_group"),
+            label: Some("misc_bind_group"),
         });
         bind_group_layouts.push(&misc_bind_group_layout);
         universal_bind_groups.push(misc_bind_group);
@@ -458,6 +503,8 @@ impl State {
             camera_uniform,
             inverse_camera_mat,
             camera_buffer,
+            light_uniform,
+            light_buffer,
             displacement_focus: [initial_displacement[0], initial_displacement[1]],
             displacement_strength: initial_displacement[3],
             displacement_buffer,

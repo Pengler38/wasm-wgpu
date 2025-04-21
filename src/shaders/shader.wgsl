@@ -4,6 +4,13 @@ var<uniform> time: vec4<f32>; // Only the first f32 is used, must be padded to 1
 @group(2) @binding(2)
 var<uniform> screen_size: vec4<f32>; // Only vec2 is needed, but for web it must be padded to 16 bytes
 
+struct Light {
+  position: vec3<f32>,
+  color: vec3<f32>,
+}
+
+@group(2) @binding(3)
+var<uniform> light: Light;
 
 // Vertex shader
 struct CameraUniform {
@@ -31,7 +38,8 @@ struct VertexInput {
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
   @location(0) tex_coords: vec2<f32>,
-  @location(1) @interpolate(perspective) screen_pos: vec2<f32>, // web cannot @interpolate(linear)
+  @location(1) normal: vec3<f32>,
+  @location(2) @interpolate(perspective) screen_pos: vec2<f32>, // web cannot @interpolate(linear)
 };
 
 @vertex 
@@ -54,7 +62,10 @@ fn vs_main(
   let displacement_strength = displacement_target.w;
   let diff = initial_world_position.xy - displacement_target.xy;
   let xy_displacement = displacement_strength * 3.0 * (-1.0 * pow(2.0, -1.0 * length(diff)) + 1.0) * normalize(diff);
-  let z_displacement = displacement_strength * 3.0 / (1.0 + exp(1.5 * length(diff) - 4.0));
+  // Convenient variable for z_displacement and derivative_z_displacement
+  // pow_component = e^(1.5 * length(diff) - 4)
+  let exp_component = exp(1.5 * length(diff) - 4.0);
+  let z_displacement = displacement_strength * 3.0 / (1.0 + exp_component);
   // z_displacement is a function that only outputs from 0 to 1, so invert that by subtracting from 1.
   let inverse_z_displacement = 1.0 - z_displacement;
 
@@ -74,6 +85,14 @@ fn vs_main(
 
   out.clip_position = camera.view_proj * world_position;
   out.screen_pos = vec2<f32>(0.5, 0.5) * (out.clip_position.xy / out.clip_position.w + vec2<f32>(1.0, 1.0));
+
+  // Calculate the normal. For now with my letters, every normal starts pointing straight up.
+  let init_normal = vec3<f32>(0.0, 0.0, 1.0);
+  // The normal is going to be perpendicular to the derivative of the z_displacement
+  let derivative_z_displacement = (-4.5 * displacement_strength) * exp_component / pow(2.0, exp_component + 1);
+  //let derivative_z_displacement = 0.0;
+  out.normal = normalize(init_normal + vec3<f32>(derivative_z_displacement * normalize(diff), 0.0));
+
   return out;
 }
 
@@ -87,4 +106,5 @@ var s_letter: sampler;
 @fragment 
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   return textureSample(t_letter, s_letter, in.tex_coords);
+  //return vec4<f32>(in.normal / 2.0 + vec3<f32>(0.5, 0.5, 0.5), 1.0); // This is a code snippet to check normal colors
 }
