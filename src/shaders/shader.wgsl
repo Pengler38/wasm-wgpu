@@ -108,17 +108,25 @@ fn vs_main(
 var t_letter: texture_2d<f32>;
 @group(0) @binding(1)
 var s_letter: sampler;
+@group(0) @binding(2)
+var t_letter_normal: texture_2d<f32>;
+@group(0) @binding(3)
+var s_letter_normal: sampler;
 
 @fragment 
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   let object_color: vec4<f32> = textureSample(t_letter, s_letter, in.tex_coords);
+
+  // Sample normal and transform from the range [0.0, 1.0] -> [-1.0, 1.0]
+  let sampled_normal: vec3<f32> = normalize(textureSample(t_letter_normal, s_letter_normal, in.tex_coords).xyz * 2.0 - vec3<f32>(1.0, 1.0, 1.0));
+  let normal = normalize(in.world_normal + sampled_normal);
 
   let ambient_strength = 0.01;
   let ambient_color = light.color * ambient_strength;
 
   let light_dir = normalize(light.position - in.world_position);
 
-  let diffuse_strength = max(dot(in.world_normal, light_dir), 0.0);
+  let diffuse_strength = max(dot(normal, light_dir), 0.0);
   let diffuse_color = light.color * diffuse_strength;
 
   // Specular shading
@@ -131,5 +139,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
   //let result = specular_color;
   let result = (ambient_color + 0.5 * diffuse_color + 3.0 * specular_color) * object_color.xyz;
   return vec4<f32>(result, object_color.a);
-  //return vec4<f32>(in.normal / 2.0 + vec3<f32>(0.5, 0.5, 0.5), 1.0); // This is a code snippet to check normal colors
+  //return vec4<f32>(in.world_normal / 2.0 + vec3<f32>(0.5, 0.5, 0.5), 1.0); // This is a code snippet to check normal colors
 }

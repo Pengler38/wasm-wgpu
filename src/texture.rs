@@ -1,13 +1,16 @@
 
 #[derive(Clone)]
-pub struct RgbaTexture {
-    pub values: Vec<[u8; 4]>, //RGBA
+pub struct RgbaTexture<T>
+where T : bytemuck::Pod + bytemuck::Zeroable {
+    pub values: Vec<T>, //RGBA
+    pub format: wgpu::TextureFormat,
     pub height: u32,
     pub width: u32,
 }
 
-impl RgbaTexture {
-    pub fn set_pixel(&mut self, x: u32, y: u32, pixel: [u8; 4]) {
+impl<T> RgbaTexture<T>
+where T: bytemuck::Pod + bytemuck::Zeroable {
+    pub fn set_pixel(&mut self, x: u32, y: u32, pixel: T) {
         let idx = (x + y * self.width) as usize;
         self.values[idx] = pixel;
     }
@@ -22,8 +25,8 @@ pub struct GpuTexture {
 }
 
 impl GpuTexture {
-    pub fn from_rgbatexture(
-        rgba: &RgbaTexture,
+    pub fn from_rgbatexture<T: bytemuck::Pod + bytemuck::Zeroable>(
+        rgba: &RgbaTexture<T>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         label: &str,
@@ -40,7 +43,7 @@ impl GpuTexture {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                format: rgba.format,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 label: Some(label),
                 view_formats: &[],
@@ -57,13 +60,16 @@ impl GpuTexture {
             bytemuck::cast_slice(rgba.values.as_slice()),
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * rgba.width),
+                bytes_per_row: Some(std::mem::size_of::<T>() as u32 * rgba.width),
                 rows_per_image: Some(rgba.height),
             },
             texture_size,
         );
 
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(rgba.format),
+            ..Default::default()
+        });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::MirrorRepeat,
             address_mode_v: wgpu::AddressMode::MirrorRepeat,

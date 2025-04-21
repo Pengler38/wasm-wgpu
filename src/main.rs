@@ -245,6 +245,7 @@ impl State {
 
         // Load the letter texture into the gpu
         let letter_texture = texture::GpuTexture::from_rgbatexture( &init_content.letter_texture, &device, &queue, "letter_texture" );
+        let letter_normal_texture = texture::GpuTexture::from_rgbatexture( &init_content.letter_normal_texture, &device, &queue, "letter_normal_texture" );
 
         // Create the bind group
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -265,8 +266,24 @@ impl State {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true }
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
-            label: Some("bind_group_layout"),
+            label: Some("texture_bind_group_layout"),
         });
 
         let texture_bind_group = device.create_bind_group(
@@ -281,8 +298,16 @@ impl State {
                         binding: 1,
                         resource: wgpu::BindingResource::Sampler(&letter_texture.sampler),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&letter_normal_texture.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&letter_normal_texture.sampler),
+                    },
                 ],
-                label: Some("bind_group"),
+                label: Some("texture_bind_group"),
             }
         );
         bind_group_layouts.push(&texture_bind_group_layout);
@@ -678,7 +703,8 @@ struct App {
 struct InitContent {
     alphabet_models: Vec<letters::Model>,
     text: String,
-    letter_texture: texture::RgbaTexture,
+    letter_texture: texture::RgbaTexture<[u8; 4]>,
+    letter_normal_texture: texture::RgbaTexture<[u8; 4]>,
 }
 
 impl ApplicationHandler for App {
@@ -862,6 +888,7 @@ fn main() -> Result<(), winit::error::EventLoopError>{
     let alphabet_models = letters::create_alphabet_models();
     let text = "hello\nworld".to_string();
     let letter_texture = letters::create_letter_texture();
+    let letter_normal_texture = letters::create_normal_texture();
 
     #[allow(unused_mut)] // mut used in desktop and not in wasm32
     let mut app = App {
@@ -870,6 +897,7 @@ fn main() -> Result<(), winit::error::EventLoopError>{
             alphabet_models,
             text,
             letter_texture,
+            letter_normal_texture,
         },
     };
         

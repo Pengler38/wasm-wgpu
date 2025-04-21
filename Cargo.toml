@@ -11,6 +11,7 @@ pollster = "0.4.0"
 bytemuck = "1.22.0"
 cgmath = "0.18.0"
 web-time = "1.1.0"
+rand_pcg = "0.9.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 wgpu = "24.0.1"

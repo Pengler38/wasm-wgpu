@@ -414,10 +414,11 @@ pub fn create_alphabet_models() -> Vec<Model> {
 
 // Outputs a generated RGBA texture
 // Just a simple test gradient for now
-pub fn create_letter_texture() -> texture::RgbaTexture {
+pub fn create_letter_texture() -> texture::RgbaTexture<[u8; 4]> {
     const SIZE: usize = 512;
-    let mut tex = texture::RgbaTexture {
+    let mut tex = texture::RgbaTexture::<[u8; 4]> {
         values: Vec::with_capacity(SIZE * SIZE),
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
         height: SIZE as u32,
         width: SIZE as u32,
     };
@@ -427,6 +428,45 @@ pub fn create_letter_texture() -> texture::RgbaTexture {
         for x in 0..tex.width {
             let a = ((y * 255) as f32 / SIZE as f32) as u8;
             tex.set_pixel(x, y, [a, a, 100, 255]);
+        }
+    }
+    tex
+}
+
+pub fn create_normal_texture() -> texture::RgbaTexture<[u8; 4]> {
+    //use rand_pcg::prelude::*;
+    use cgmath::prelude::*;
+    use rand_pcg::rand_core::{SeedableRng, RngCore};
+
+    fn f_to_c(f: f32) -> u8 {
+        (f * 255.0) as u8
+    }
+
+    // uses next_u32, so only works properly in ranges of length < 2^32
+    fn random_range<T: RngCore>(r: &mut T, range: std::ops::Range<f32>) -> f32 {
+        let num = r.next_u32();
+        let length = range.end - range.start;
+        (num as f32 * length / u32::MAX as f32) + range.start
+    }
+
+    const SIZE: usize = 512;
+    let mut tex = texture::RgbaTexture::<[u8; 4]> {
+        values: Vec::with_capacity(SIZE * SIZE),
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        height: SIZE as u32,
+        width: SIZE as u32,
+    };
+    tex.values.resize(SIZE * SIZE, [0, 0, 0, 0]);
+
+    let mut rng = rand_pcg::Pcg32::seed_from_u64(1);
+    for y in 0..tex.height {
+        for x in 0..tex.width {
+            let xrand = random_range(&mut rng, 0.0..1.0);
+            let yrand = random_range(&mut rng, 0.0..1.0);
+            let zrand = random_range(&mut rng, 0.0..1.0);
+            //let v = cgmath::Vector3::new(xrand, yrand, zrand).normalize();
+            let v = cgmath::Vector3::new(xrand, yrand, zrand).normalize();
+            tex.set_pixel(x, y, [f_to_c(v[0]), f_to_c(v[1]), f_to_c(v[2]), 0]);
         }
     }
     tex
