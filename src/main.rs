@@ -354,7 +354,7 @@ impl State {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             }
         );
-        let light_uniform = LightUniform::new([0.0, -2.0, 3.0], [1.0, 1.0, 1.0]);
+        let light_uniform = LightUniform::new([2.0, 0.5, 1000.0], [1.0, 1.0, 1.0]);
         let light_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("light_buffer"),
