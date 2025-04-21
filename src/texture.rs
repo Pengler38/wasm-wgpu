@@ -14,6 +14,11 @@ where T: bytemuck::Pod + bytemuck::Zeroable {
         let idx = (x + y * self.width) as usize;
         self.values[idx] = pixel;
     }
+
+    pub fn get_pixel(&self, x: u32, y: u32) -> T {
+        let idx = (x + y * self.width) as usize;
+        self.values[idx]
+    }
 }
 
 

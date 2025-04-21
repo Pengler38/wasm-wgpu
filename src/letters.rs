@@ -9,6 +9,9 @@
 
 use crate::texture;
 
+use cgmath::prelude::*;
+use rand_pcg::rand_core::{SeedableRng, RngCore};
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vert {
@@ -412,10 +415,11 @@ pub fn create_alphabet_models() -> Vec<Model> {
         .collect()
 }
 
+const SIZE: usize = 512;
+
 // Outputs a generated RGBA texture
 // Just a simple test gradient for now
 pub fn create_letter_texture() -> texture::RgbaTexture<[u8; 4]> {
-    const SIZE: usize = 512;
     let mut tex = texture::RgbaTexture::<[u8; 4]> {
         values: Vec::with_capacity(SIZE * SIZE),
         format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -433,23 +437,32 @@ pub fn create_letter_texture() -> texture::RgbaTexture<[u8; 4]> {
     tex
 }
 
-pub fn create_normal_texture() -> texture::RgbaTexture<[u8; 4]> {
-    //use rand_pcg::prelude::*;
-    use cgmath::prelude::*;
-    use rand_pcg::rand_core::{SeedableRng, RngCore};
+pub fn create_static_texture(chunk_size: u32) -> texture::RgbaTexture<[u8; 4]> {
+    create_fractal_static_texture(chunk_size, chunk_size)
+}
 
-    fn f_to_c(f: f32) -> u8 {
-        (f * 255.0) as u8
+fn f_to_c(f: f32) -> u8 {
+    (f * 255.0) as u8
+}
+
+// uses next_u32, so only works properly in ranges of length < 2^32
+fn random_range<T: rand_pcg::rand_core::RngCore>(r: &mut T, range: std::ops::Range<f32>) -> f32 {
+    let num = r.next_u32();
+    let length = range.end - range.start;
+    (num as f32 * length / u32::MAX as f32) + range.start
+}
+
+fn add_chunk(tex: &mut texture::RgbaTexture<[u8; 4]>, x: u32, y: u32, val: [u8; 4], chunk_size: u32, olddiv: u8, div: u8) {
+    for i in 0..chunk_size {
+        for j in 0..chunk_size {
+            let oldval = tex.get_pixel(x+i, y+j);
+            let outval = [oldval[0]/olddiv + val[0]/div, oldval[1]/olddiv + val[1]/div, oldval[2]/olddiv + val[2]/div, 0];
+            tex.set_pixel(x+i, y+j, outval);
+        }
     }
+}
 
-    // uses next_u32, so only works properly in ranges of length < 2^32
-    fn random_range<T: RngCore>(r: &mut T, range: std::ops::Range<f32>) -> f32 {
-        let num = r.next_u32();
-        let length = range.end - range.start;
-        (num as f32 * length / u32::MAX as f32) + range.start
-    }
-
-    const SIZE: usize = 512;
+pub fn create_fractal_static_texture(start_chunk_size: u32, end_chunk_size: u32) -> texture::RgbaTexture<[u8; 4]> {
     let mut tex = texture::RgbaTexture::<[u8; 4]> {
         values: Vec::with_capacity(SIZE * SIZE),
         format: wgpu::TextureFormat::Rgba8Unorm,
@@ -458,16 +471,29 @@ pub fn create_normal_texture() -> texture::RgbaTexture<[u8; 4]> {
     };
     tex.values.resize(SIZE * SIZE, [0, 0, 0, 0]);
 
-    let mut rng = rand_pcg::Pcg32::seed_from_u64(1);
-    for y in 0..tex.height {
-        for x in 0..tex.width {
-            let xrand = random_range(&mut rng, 0.0..1.0);
-            let yrand = random_range(&mut rng, 0.0..1.0);
-            let zrand = random_range(&mut rng, 0.0..1.0);
-            //let v = cgmath::Vector3::new(xrand, yrand, zrand).normalize();
-            let v = cgmath::Vector3::new(xrand, yrand, zrand).normalize();
-            tex.set_pixel(x, y, [f_to_c(v[0]), f_to_c(v[1]), f_to_c(v[2]), 0]);
+    // Recurse to make a fractal static noise
+    fn recurse<T: RngCore>(rng: &mut T, tex: &mut texture::RgbaTexture<[u8; 4]>, chunk_size: u32, end_chunk_size: u32, div: u8) {
+        if chunk_size < end_chunk_size {
+            return;
         }
+        if chunk_size > tex.width || chunk_size > tex.height {
+            return;
+        }
+        for y in 0..(tex.height / chunk_size) {
+            for x in 0..(tex.width / chunk_size) {
+                let xrand = random_range(rng, 0.0..1.0);
+                let yrand = random_range(rng, 0.0..1.0);
+                let zrand = random_range(rng, 0.0..1.0);
+                let vec = cgmath::Vector3::new(xrand, yrand, zrand).normalize();
+                let val = [f_to_c(vec[0]), f_to_c(vec[1]), f_to_c(vec[2]), 0];
+                add_chunk(tex, x * chunk_size, y * chunk_size, val, chunk_size, 1, div);
+            }
+        }
+        recurse(rng, tex, chunk_size/2, end_chunk_size, u8::saturating_mul(div, 2));
     }
+
+
+    let mut rng = rand_pcg::Pcg32::seed_from_u64(1);
+    recurse(&mut rng, &mut tex, start_chunk_size, end_chunk_size, 2);
     tex
 }
