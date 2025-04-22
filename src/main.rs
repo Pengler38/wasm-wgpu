@@ -887,7 +887,7 @@ fn main() -> Result<(), winit::error::EventLoopError>{
 
     let alphabet_models = letters::create_alphabet_models();
     let text = "hello\nworld".to_string();
-    let letter_texture = letters::create_letter_texture();
+    let letter_texture = letters::create_pixelated_letter_texture();
     let letter_normal_texture = letters::create_static_texture(1);
 
     #[allow(unused_mut)] // mut used in desktop and not in wasm32

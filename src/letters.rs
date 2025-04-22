@@ -9,7 +9,6 @@
 
 use crate::texture;
 
-use cgmath::prelude::*;
 use rand_pcg::rand_core::{SeedableRng, RngCore};
 
 #[repr(C)]
@@ -417,9 +416,7 @@ pub fn create_alphabet_models() -> Vec<Model> {
 
 const SIZE: usize = 512;
 
-// Outputs a generated RGBA texture
-// Just a simple test gradient for now
-pub fn create_letter_texture() -> texture::RgbaTexture<[u8; 4]> {
+pub fn _create_letter_texture() -> texture::RgbaTexture<[u8; 4]> {
     let mut tex = texture::RgbaTexture::<[u8; 4]> {
         values: Vec::with_capacity(SIZE * SIZE),
         format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -430,8 +427,30 @@ pub fn create_letter_texture() -> texture::RgbaTexture<[u8; 4]> {
     
     for y in 0..tex.height {
         for x in 0..tex.width {
-            let a = ((y * 255) as f32 / SIZE as f32) as u8;
-            tex.set_pixel(x, y, [a, a, 100, 255]);
+            let gradient = ((y * 255) as f32 / SIZE as f32) as u8;
+            tex.set_pixel(x, y, [gradient, gradient, 100, 255]);
+        }
+    }
+    tex
+}
+
+pub fn create_pixelated_letter_texture() -> texture::RgbaTexture<[u8; 4]> {
+    let mut tex = create_fractal_static_texture(128, 1);
+    // Add the yellow -> blue gradient to the fractal static
+    tex.format = wgpu::TextureFormat::Rgba8UnormSrgb;
+    for y in 0..tex.height {
+        for x in 0..tex.width {
+            let gradient = ((y * 255) as f32 / SIZE as f32) as u8;
+
+            let oldval = tex.get_pixel(x, y);
+            let mul = oldval[0] as f32 / 255.0 + 3.0 / 4.0;
+
+            tex.set_pixel(x, y, [
+                (gradient as f32 * mul) as u8,
+                (gradient as f32 * mul) as u8,
+                (100 as f32 * mul) as u8,
+                255
+            ]);
         }
     }
     tex
@@ -484,7 +503,7 @@ pub fn create_fractal_static_texture(start_chunk_size: u32, end_chunk_size: u32)
                 let xrand = random_range(rng, 0.0..1.0);
                 let yrand = random_range(rng, 0.0..1.0);
                 let zrand = random_range(rng, 0.0..1.0);
-                let vec = cgmath::Vector3::new(xrand, yrand, zrand).normalize();
+                let vec = cgmath::Vector3::new(xrand, yrand, zrand);
                 let val = [f_to_c(vec[0]), f_to_c(vec[1]), f_to_c(vec[2]), 0];
                 add_chunk(tex, x * chunk_size, y * chunk_size, val, chunk_size, 1, div);
             }
