@@ -912,7 +912,7 @@ fn main() -> Result<(), winit::error::EventLoopError>{
 
         let linecount_heading = web_sys::window()
             .and_then(|w| w.document())
-            .and_then(|d| d.get_element_by_id("linecount_heading"))
+            .and_then(|d| d.get_element_by_id("linecount_element"))
             .map(|e| e.dyn_into::<web_sys::HtmlElement>().unwrap())
             .unwrap();
         let s = linecount_heading.inner_text().replace(
