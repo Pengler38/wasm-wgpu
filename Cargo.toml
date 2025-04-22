@@ -26,3 +26,9 @@ wgpu = { version = "24.0.1", features = ["webgl", "webgpu"] }
 # webgl-backend
 # webgpu-backend
 # desktop
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+#codegen-units = 1 #This can be uncommented to make the release binary even smaller, though it will compile slower since the build is less parallel
