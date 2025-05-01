@@ -175,6 +175,7 @@ struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
+    surface_configured: bool,
     surface_format: wgpu::TextureFormat,
     render_pipeline: wgpu::RenderPipeline,
     models: [Model; 26],
@@ -518,7 +519,7 @@ impl State {
             cache: None,
         });
 
-        let state = State {
+        let mut state = State {
             start_time: web_time::Instant::now(),
             time_buffer,
             cursor_clicked: false,
@@ -542,6 +543,7 @@ impl State {
                 device,
                 queue,
                 surface,
+                surface_configured: false,
                 surface_format,
                 render_pipeline,
                 models,
@@ -559,7 +561,7 @@ impl State {
         &self.window
     }
 
-    fn configure_surface(&self) {
+    fn configure_surface(&mut self) {
         //If size is zero, do not reconfigure surface. Causes wgpu errors
         if self.size.width == 0 || self.size.height == 0 { 
             return;
@@ -577,6 +579,7 @@ impl State {
             present_mode: wgpu::PresentMode::AutoVsync,
         };
         self.gpu.surface.configure(&self.gpu.device, &surface_config);
+        self.gpu.surface_configured = true;
     }
 
     fn reconfigure_camera(&mut self) {
@@ -745,6 +748,8 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
+                // Ensure the surface is configured before rendering
+                if state.gpu.surface_configured == false { return; }
                 state.render();
                 //Emit a new redraw requested event
                 state.get_window().request_redraw();
