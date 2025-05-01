@@ -1,8 +1,11 @@
 use cgmath::prelude::*;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use web_time;
+#[cfg(not(target_arch = "wasm32"))]
 use pollster;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures;
 
 use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::{ActiveEventLoop, ControlFlow, EventLoop}, window::{Window, WindowId}
@@ -207,7 +210,7 @@ struct State {
 }
 
 impl State {
-    async fn new(window: Arc<Window>, init_content: &InitContent) -> State {
+    async fn new(window: Arc<Window>, init_content: Arc<InitContent>) -> State {
 
         // Handle wgpu portion of State creation:
         let instance_descriptor = platform_specific::instance_descriptor();
@@ -695,8 +698,8 @@ impl State {
 }
 
 struct App {
-    state: Option<State>,
-    init_content: InitContent,
+    state: Arc<Mutex<Option<State>>>,
+    init_content: Arc<InitContent>,
 }
 
 // InitContent includes (effectively static) content generated during initialization
@@ -717,14 +720,25 @@ impl ApplicationHandler for App {
                 .unwrap(),
         );
 
-        let state = pollster::block_on(State::new(window.clone(), &self.init_content));
-        self.state = Some(state);
+        let future = new_state(self.state.clone(), window, self.init_content.clone());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        pollster::block_on(future);
+        #[cfg(target_arch = "wasm32")]
+        wasm_bindgen_futures::spawn_local(future);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         use winit::event::{ElementState, MouseButton};
 
-        let state = self.state.as_mut().unwrap();
+        let mut state_ref = match self.state.try_lock() {
+            Ok(sr) => { sr }
+            Err(_) => { return }
+        };
+        let state = match state_ref.as_mut() {
+            Some(s) => { s }
+            None => { return }
+        };
         match event {
             WindowEvent::CloseRequested => {
                 println!("Closing window...");
@@ -778,6 +792,14 @@ impl ApplicationHandler for App {
             _ => (),
         }
     }
+}
+
+async fn new_state(state_mutex: Arc<Mutex<Option<State>>>, window: Arc<Window>, init_content: Arc<InitContent>) {
+    let new_state = State::new(window.clone(), init_content).await;
+    let mut state_ref = state_mutex.lock().unwrap();
+    *state_ref = Some(new_state);
+
+    window.request_redraw();
 }
 
 fn create_models(device: &wgpu::Device, text: &str, alphabet_models: &[letters::Model]) -> [Model; 26] {
@@ -892,13 +914,13 @@ fn main() -> Result<(), winit::error::EventLoopError>{
 
     #[allow(unused_mut)] // mut used in desktop and not in wasm32
     let mut app = App {
-        state: None,
-        init_content: InitContent {
+        state: Arc::new(Mutex::new(None)),
+        init_content: Arc::new(InitContent {
             alphabet_models,
             text,
             letter_texture,
             letter_normal_texture,
-        },
+        }),
     };
         
     #[cfg(not(target_arch = "wasm32"))]

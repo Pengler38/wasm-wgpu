@@ -1685,6 +1685,7 @@ dependencies = [
  "console_error_panic_hook",
  "pollster",
  "rand_pcg",
+ "wasm-bindgen-futures",
  "web-time",
  "wgpu",
  "winit",
